@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/jalala984/master-worker/api";
+
+message Request {
+    string action = 1;
+}
+
+message Response {
+    string data = 1;
+}
+
+// NodeService defines two RPC methods for node operations.
+// The first is a unary RPC for reporting status, it takes in a Request and returns a Response.
+// Example usage could be a node reporting its current health status.
+// For example the master could call ReportStatus with action "get_status" and the node would respond with its current status in the data field.
+// The second is a server streaming RPC for assigning tasks, it takes in a Request and returns a stream of Responses.
+// Example usage could be the master assigning a long-running task to the node, and the node sending back periodic updates.
+// For example the master could call AssignTask with action "start_task" and the worker would respond with multiple Responses containing progress updates in the data field.
+
+service NodeService {
+    rpc ReportStatus(Request) returns (Response){};
+    rpc AssignTask(Request) returns (stream Response){}; // Server-side RPC
+}
