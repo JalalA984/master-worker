@@ -16,7 +16,7 @@ curl -X POST "http://localhost:9092/tasks?cmd=HelloFromHuman"
 ______________________________________________________________________________________________
 
 Some Ideas:
-- A scripts folder? or like a user/human has a bunch of scripts they want to run (that of course do outputs) and instend of sending just string commands the specify maybe path to a script or batch of scripts and then the master assigns jobs/scripts to workers... hmm 
+- A scripts folder? or like a user/human has a bunch of scripts they want to run (that of course do outputs) and instend of sending just string commands the specify maybe path to a script or batch of scripts (right now lets just support bash scripts that print 1-n where the n files are the bash script files) and then the master assigns jobs/scripts to workers... hmm 
 
 - what if we had 2 masters or similar to how gfs/hadoop have a shadow backup... but then again why do we need backup/more than one master...
 

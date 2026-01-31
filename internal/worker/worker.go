@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os/exec"
 
 	"github.com/jalala984/master-worker/api"
 	"google.golang.org/grpc"
@@ -12,7 +13,7 @@ import (
 
 type Worker struct {
 	client api.NodeServiceClient // This is the gRPC client/worker to communicate with the Master which is defined in api package proto file
-	conn   *grpc.ClientConn // This defines a connection to the gRPC server and is required as defined by gRPC library and protobuf
+	conn   *grpc.ClientConn      // This defines a connection to the gRPC server and is required as defined by gRPC library and protobuf
 }
 
 func NewWorker(target string) (*Worker, error) { // target is the address of the Master server
@@ -44,19 +45,36 @@ func (w *Worker) Start() error {
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
-			// The Master closed the stream gracefully
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("error receiving from stream: %v", err)
+			return err
 		}
 
-		// Logic: What to do with the command?
-		fmt.Printf("RECEIVED COMMAND: %s\n", res.Data)
-		
-		// For now, we just print it. Later we can make it execute shell commands.
-	}
+		fmt.Printf("EXECUTING TASK %s: %s\n", res.TaskId, res.Data)
 
+		// Run the script
+		// In a prod app, save the bytes to a file; here assume the path is accessible
+		cmd := exec.Command("/bin/bash", res.Data)
+		output, err := cmd.CombinedOutput()
+
+		status := "success"
+		if err != nil {
+			status = fmt.Sprintf("failed: %v", err)
+		}
+
+		// Report completion back to Master
+		_, err = w.client.ReportStatus(context.Background(), &api.Request{
+			Action:  "completed",
+			TaskId:  res.TaskId,
+			Payload: string(output), // Send the script output back!
+		})
+		if err != nil {
+			fmt.Printf("Failed to report task %s: %v\n", res.TaskId, err)
+		} else {
+			fmt.Printf("Task %s reported as %s\n", res.TaskId, status)
+		}
+	}
 	return nil
 }
 

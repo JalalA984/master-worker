@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/jalala984/master-worker/api"
 	"github.com/jalala984/master-worker/internal/server"
@@ -11,7 +15,7 @@ import (
 )
 
 type Master struct {
-	grpcServer *grpc.Server // The grpc server is for the worker/client connections while the nodeServer handles the logic
+	grpcServer *grpc.Server       // The grpc server is for the worker/client connections while the nodeServer handles the logic
 	nodeServer *server.NodeServer // This is the implementation internal/server/nodeserver.go
 }
 
@@ -52,16 +56,37 @@ func (m *Master) handleTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the command from the URL query or body
-	cmd := r.URL.Query().Get("cmd")
-	if cmd == "" {
-		http.Error(w, "Missing cmd parameter", http.StatusBadRequest)
+	// Get the directory path from the query string
+	dirPath := r.URL.Query().Get("dir")
+	if dirPath == "" {
+		http.Error(w, "Missing 'dir' parameter", http.StatusBadRequest)
 		return
 	}
 
-	// We send the command into the channel. 
-	// The gRPC stream is waiting on the other side of this channel!
-	m.nodeServer.CmdChannel <- cmd // this is blocking if no workers are connected, which is fine for this simple example but maybe later TODO: add buffering or worker management?
+	// Scan the directory
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read dir: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	fmt.Fprintf(w, "Task '%s' sent to workers\n", cmd)
+	count := 0
+	for _, file := range files {
+		// Only process .sh files
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".sh") {
+			fullPath := filepath.Join(dirPath, file.Name())
+
+			// Create a unique Task
+			task := server.Task{
+				ID:     fmt.Sprintf("task-%d-%s", time.Now().UnixNano(), file.Name()),
+				Script: fullPath, // Send the path for now
+			}
+
+			// Drop it into the channel
+			m.nodeServer.TaskQueue <- task
+			count++
+		}
+	}
+
+	fmt.Fprintf(w, "Enqueued %d scripts from %s\n", count, dirPath)
 }

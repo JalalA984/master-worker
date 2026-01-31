@@ -6,10 +6,13 @@ option go_package = "github.com/jalala984/master-worker/api";
 
 message Request {
     string action = 1;
+    string task_id = 2;   // Worker can report status on a specific task
+    string payload = 3;   // Worker can send logs/results back
 }
 
 message Response {
     string data = 1;
+    string task_id = 2;   // Master tells worker "This is Task #X"
 }
 
 // NodeService defines two RPC methods for node operations.
