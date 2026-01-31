@@ -1,17 +1,45 @@
 The Master starts: It opens a gRPC port (50051) and an HTTP port (9092). It’s now sitting and waiting.
 
-The Worker starts: It connects to 50051 and says "ready". The Master’s AssignTask function starts but "parks" at the CmdChannel.
+The Worker starts: It connects to 50051 and says "ready". The Master’s AssignTask function starts but "parks" at the task channel.
 
 The Human (You): You send a POST request to 9092.
 
-The Handshake: The HTTP handler drops your message into the CmdChannel. This "wakes up" the gRPC loop, which sends that message across the network to the Worker.
+The Handshake: The HTTP handler drops your message into the task channel. This "wakes up" the gRPC loop, which sends that message across the network to the Worker.
 
 
 go run main.go master
 
 go run main.go worker
 
-curl -X POST "http://localhost:9092/tasks?cmd=HelloFromHuman"
+curl -X POST "http://localhost:9092/tasks?dir=$(pwd)/test_scripts"
+
+# Build the image
+docker build -t master-worker:v1 .
+
+# Create a network
+docker network create my-net
+
+# Start the Master
+# map 9092 (HTTP) and 50051 (gRPC) to our host
+# Run master with a volume mount
+docker run -d --name master-node --network my-net \
+  -v $(pwd)/test_scripts:/scripts \
+  -p 9092:9092 -p 50051:50051 \
+  master-worker:v1 ./main master
+
+# Start the Worker
+# Note: Target is "master-node:50051" not localhost
+docker run -d --name worker-node --network my-net \
+  -e MASTER_ADDR=master-node:50051 \
+  -v $(pwd)/test_scripts:/scripts \
+  master-worker:v1 ./main worker
+
+
+# Trigger it
+curl -X POST "http://localhost:9092/tasks?dir=/scripts"
+
+docker stop worker-node && docker rm worker-node
+docker stop master-node && docker rm master-node
 
 ______________________________________________________________________________________________
 

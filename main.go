@@ -29,9 +29,15 @@ func main() {
 
 	case "worker":
 		fmt.Println("--- Worker Node Mode ---")
-		// The worker "dials" the Master on its gRPC port
-		w, err := worker.NewWorker("localhost:50051")
-		
+
+		// Check if MASTER_ADDR is set (e.g., "master-node:50051")
+		masterAddr := os.Getenv("MASTER_ADDR")
+		if masterAddr == "" {
+			masterAddr = "localhost:50051"
+		}
+
+		w, err := worker.NewWorker(masterAddr)
+
 		if err != nil {
 			log.Fatalf("Worker failed to connect: %v", err)
 		}
@@ -39,7 +45,7 @@ func main() {
 
 		// Start() blocks because it's listening to the gRPC stream.
 		// worker starts and connects to master gRPC server and the masters AssignTask has started but is blocked waiting for tasks inside CmdChannel
-		if err := w.Start(); err != nil { 
+		if err := w.Start(); err != nil {
 			log.Fatalf("Worker lost connection: %v", err)
 		}
 
