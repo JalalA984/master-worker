@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: master  # Deployment looks for Pods with this label
+  template:
+    metadata:
+      labels:
+        app: master # The Pod is given this label
+    spec:
+      containers:
+        - name: master
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          args: ["./main", "master"]
+          volumeMounts:
+            - name: script-vol
+              mountPath: /etc/scripts # Master will scan this path
+      volumes:
+        - name: script-vol
+          configMap:
+            name: script-source

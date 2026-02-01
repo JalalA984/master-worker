@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/jalala984/master-worker/api"
 	"google.golang.org/grpc"
@@ -34,6 +38,10 @@ func NewWorker(target string) (*Worker, error) { // target is the address of the
 func (w *Worker) Start() error {
 	fmt.Println("Worker connecting to Master...")
 
+	// Setup Signal Catching
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// Call AssignTask to open the stream
 	// We use an empty Request for now as the "trigger" TODO: later this could instead send worker info like CPU/RAM or other metadata
 	stream, err := w.client.AssignTask(context.Background(), &api.Request{Action: "ready"})
@@ -41,41 +49,68 @@ func (w *Worker) Start() error {
 		return err
 	}
 
-	// Loop forever and wait for messages from the Master
+	taskChan := make(chan *api.Response)
+	errChan := make(chan error, 1)
+	var wg sync.WaitGroup
+
+	// Background Goroutine to pull tasks from the gRPC stream
+	go func() {
+		for {
+			res, err := stream.Recv()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			taskChan <- res
+		}
+	}()
+
+	// Main Loop forever and wait for messages from the Master or shutdown sig
 	for {
-		res, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+		select {
+		case <-ctx.Done():
+			fmt.Println("\n[SHUTDOWN] Signal received. Waiting for active tasks to finish...")
+			wg.Wait() // Ensure the current bash script finishes
+			fmt.Println("[SHUTDOWN] Cleanup complete. Exiting.")
+			return nil
 
-		fmt.Printf("EXECUTING TASK %s: %s\n", res.TaskId, res.Data)
+		case err := <-errChan:
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("stream error: %v", err)
 
-		// Run the script
-		// In a prod app, save the bytes to a file; here assume the path is accessible
-		cmd := exec.Command("/bin/bash", res.Data)
-		output, err := cmd.CombinedOutput()
+		case res := <-taskChan:
+			wg.Add(1)
+			// Execute task (wrapped in a func to ensure WaitGroup works)
+			func(task *api.Response) {
+				defer wg.Done()
+				fmt.Printf("EXECUTING TASK %s: %s\n", task.TaskId, task.Data)
 
-		status := "success"
-		if err != nil {
-			status = fmt.Sprintf("failed: %v", err)
-		}
+				cmd := exec.Command("/bin/bash", task.Data)
+				output, err := cmd.CombinedOutput()
 
-		// Report completion back to Master
-		_, err = w.client.ReportStatus(context.Background(), &api.Request{
-			Action:  "completed",
-			TaskId:  res.TaskId,
-			Payload: string(output), // Send the script output back!
-		})
-		if err != nil {
-			fmt.Printf("Failed to report task %s: %v\n", res.TaskId, err)
-		} else {
-			fmt.Printf("Task %s reported as %s\n", res.TaskId, status)
+				status := "success"
+				if err != nil {
+					status = fmt.Sprintf("failed: %v", err)
+				}
+
+				podName, _ := os.Hostname()
+				_, reportErr := w.client.ReportStatus(context.Background(), &api.Request{
+					Action:   "completed",
+					TaskId:   task.TaskId,
+					Payload:  string(output),
+					WorkerId: podName,
+				})
+
+				if reportErr != nil {
+					fmt.Printf("Failed to report task %s: %v\n", task.TaskId, reportErr)
+				} else {
+					fmt.Printf("Task %s reported as %s\n", task.TaskId, status)
+				}
+			}(res)
 		}
 	}
-	return nil
 }
 
 func (w *Worker) Close() {

@@ -1,0 +1,5 @@
+image:
+  repository: master-worker
+  tag: v1
+
+workerCount: 3 

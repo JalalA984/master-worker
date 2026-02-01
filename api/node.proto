@@ -8,6 +8,7 @@ message Request {
     string action = 1;
     string task_id = 2;   // Worker can report status on a specific task
     string payload = 3;   // Worker can send logs/results back
+    string worker_id = 4;
 }
 
 message Response {

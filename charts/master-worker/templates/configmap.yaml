@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: script-source
+data:
+  1.sh: |
+    #!/bin/bash
+    echo "Running script 1 on $(hostname)"
+    sleep 2
+  2.sh: |
+    #!/bin/bash
+    echo "Running script 2 on $(hostname)"
+    sleep 5

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: {{ .Values.workerCount }}
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          args: ["./main", "worker"]
+          env:
+            - name: MASTER_ADDR
+              value: "master-service:50051"
+          volumeMounts:
+            - name: script-vol
+              mountPath: /etc/scripts
+      volumes:
+        - name: script-vol
+          configMap:
+            name: script-source
