@@ -1,55 +1,74 @@
+// main.go is the single binary entry point for both master and worker roles.
+//
+// Usage:
+//   go run main.go master    # Start as master (gRPC :50051 + HTTP :9092)
+//   go run main.go worker    # Start as worker (connects to master)
+//
+// Configuration comes from environment variables (12-Factor App pattern).
+// See internal/config/config.go for all configurable values.
 package main
 
 import (
+	"embed"
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/jalala984/master-worker/internal/config"
+	"github.com/jalala984/master-worker/internal/logging"
 	"github.com/jalala984/master-worker/internal/master"
 	"github.com/jalala984/master-worker/internal/worker"
 )
 
+// Embed the web/ directory for the dashboard.
+// embed.FS requires the directive to be in the same directory as the files.
+//
+//go:embed web/*
+var webContent embed.FS
+
+// Embed the docs/ directory for serving documentation from the dashboard.
+//
+//go:embed docs/*
+var docsContent embed.FS
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go [master|worker]")
-		return
+		fmt.Println("Usage: main [master|worker]")
+		os.Exit(1)
 	}
 
-	role := os.Args[1]
+	cfg := config.Load()
+	cfg.Role = os.Args[1]
 
-	switch role {
+	logger := logging.NewLogger(cfg.Role, cfg.LogLevel, cfg.LogFormat)
+
+	switch cfg.Role {
 	case "master":
-		fmt.Println("--- Master Node Mode ---")
-		m := master.NewMaster()
-		// master opens a gRPC server on port 50051 and a HTTP server on port 9092
-		// Start() blocks because of the HTTP server.
+		logger.Info("starting master node")
+		// Pass embedded content to the master package.
+		master.WebContent = webContent
+		master.DocsContent = docsContent
+		m := master.NewMaster(logger, cfg)
 		if err := m.Start(); err != nil {
-			log.Fatalf("Master crashed: %v", err)
+			logger.Error("master crashed", "error", err)
+			os.Exit(1)
 		}
 
 	case "worker":
-		fmt.Println("--- Worker Node Mode ---")
-
-		// Check if MASTER_ADDR is set (e.g., "master-node:50051")
-		masterAddr := os.Getenv("MASTER_ADDR")
-		if masterAddr == "" {
-			masterAddr = "localhost:50051"
-		}
-
-		w, err := worker.NewWorker(masterAddr)
-
+		logger.Info("starting worker node")
+		w, err := worker.NewWorker(cfg.MasterAddr, logger, cfg)
 		if err != nil {
-			log.Fatalf("Worker failed to connect: %v", err)
+			logger.Error("worker failed to connect", "error", err)
+			os.Exit(1)
 		}
 		defer w.Close()
 
-		// Start() blocks because it's listening to the gRPC stream.
-		// worker starts and connects to master gRPC server and the masters AssignTask has started but is blocked waiting for tasks inside CmdChannel
 		if err := w.Start(); err != nil {
-			log.Fatalf("Worker lost connection: %v", err)
+			logger.Error("worker failed", "error", err)
+			os.Exit(1)
 		}
 
 	default:
-		fmt.Printf("Unknown role: %s. Use 'master' or 'worker'.\n", role)
+		fmt.Printf("Unknown role: %s. Use 'master' or 'worker'.\n", cfg.Role)
+		os.Exit(1)
 	}
 }

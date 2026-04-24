@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: worker
+  labels:
+    app: worker
 spec:
   replicas: {{ .Values.workerCount }}
   selector:
@@ -12,13 +14,27 @@ spec:
       labels:
         app: worker
     spec:
+      serviceAccountName: worker-sa
       containers:
         - name: worker
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           args: ["./main", "worker"]
           env:
             - name: MASTER_ADDR
-              value: "master-service:50051"
+              value: "master-service:{{ .Values.master.grpcPort }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.worker.env.LOG_LEVEL }}"
+            - name: LOG_FORMAT
+              value: "{{ .Values.worker.env.LOG_FORMAT }}"
+            - name: HEARTBEAT_INTERVAL
+              value: "{{ .Values.worker.env.HEARTBEAT_INTERVAL }}"
+          resources:
+            requests:
+              cpu: {{ .Values.worker.resources.requests.cpu }}
+              memory: {{ .Values.worker.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.worker.resources.limits.cpu }}
+              memory: {{ .Values.worker.resources.limits.memory }}
           volumeMounts:
             - name: script-vol
               mountPath: /etc/scripts

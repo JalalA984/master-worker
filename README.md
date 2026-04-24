@@ -1,94 +1,250 @@
-# Distributed Task Orchestrator (Go + gRPC + K8s)
+# Master-Worker: Distributed Task Orchestrator
 
-Just wanted to learn distributed system with Master-Worker arch: just executes bash scripts in ConfigMap
+A production-grade distributed task orchestrator using master-worker architecture. A single master accepts tasks via HTTP (inline scripts, file paths, or tar.gz archives), distributes them to workers over gRPC streaming, and tracks completion with fault recovery.
 
-    Master Node: Hosts a gRPC server (port 50051) for worker management and an HTTP API (port 9092) for user interaction. It manages a Tracking Map and Task Queue for fault tolerance.
+## Features
 
-    Worker Node: Connects to the Master via gRPC server-side streaming. It pulls tasks, executes bash scripts using os/exec, and reports real-time status/logs back to the Master.
+**Core**
+- gRPC server-streaming for push-based task dispatch (no polling)
+- Heartbeat-based failure detection (HDFS model: ACTIVE → SUSPECT → DEAD)
+- At-least-once task delivery with automatic re-queuing from disconnected workers
+- Priority queue scheduler with retry, exponential backoff + jitter, dead letter queue
 
-    The Handshake: The Master's AssignTask function "parks" at a Go channel until an HTTP POST request enqueues tasks. This triggers the gRPC loop to stream payloads to available workers.
+**Task Types**
+- **Script Path**: Execute `.sh` files from a directory (original mode)
+- **Inline Scripts**: Submit bash, Python, or Node.js scripts via JSON API
+- **Archive Upload**: Upload tar.gz projects with entrypoint command (CI/CD mode)
 
-# Run Local
+**Reliability**
+- Circuit breakers per worker (CLOSED → OPEN → HALF_OPEN pattern)
+- BadgerDB persistence for crash recovery
+- Token bucket rate limiting (100 req/s, burst 200)
+- Graceful shutdown with in-flight task completion
 
-## Terminal 1: Start Master
+**Observability**
+- Prometheus metrics (17 counters/gauges/histograms)
+- OpenTelemetry tracing (stdout exporter)
+- Structured logging (slog, text/JSON format)
+- Real-time web dashboard with WebSocket events
+- pprof profiling endpoints
+
+**Deployment**
+- Single binary for master and worker roles
+- Docker Compose: master + 3 workers + Prometheus + Grafana
+- Kubernetes: Helm chart with PDB, HPA, NetworkPolicy, ServiceAccounts
+- Kind cluster deployment with `./deploy.sh`
+- mTLS certificate generation for gRPC security
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System diagrams, gRPC patterns, fault tolerance, package dependencies |
+| [Distributed Systems Concepts](docs/DISTRIBUTED_SYSTEMS_CONCEPTS.md) | Every feature mapped to theory and real-world systems |
+| [Installation Guide](docs/INSTALLATION.md) | Local, Docker Compose, and Kubernetes setup |
+
+Documentation is also accessible from the web dashboard at http://localhost:9092/ (click "Docs" in the header).
+
+## Quick Start
+
+### Local (2 terminals)
+
+```bash
+# Terminal 1: Start master
 go run main.go master
 
-## Terminal 2: Start Worker
+# Terminal 2: Start worker
 go run main.go worker
 
-## Terminal 3: Trigger execution (Use absolute path for local)
+# Terminal 3: Submit tasks
+# Script path mode
 curl -X POST "http://localhost:9092/tasks?dir=$(pwd)/test_scripts"
 
-# Run Docker
+# Inline bash
+curl -X POST http://localhost:9092/api/v1/submit \
+  -H "Content-Type: application/json" \
+  -d '{"language":"bash","script":"echo Hello from $(hostname); uptime"}'
 
-## Build the Multi-stage Docker Image
-docker build -t master-worker:v1 .
+# Inline Python
+curl -X POST http://localhost:9092/api/v1/submit \
+  -H "Content-Type: application/json" \
+  -d '{"language":"python","script":"import platform; print(f\"Python on {platform.node()}\")"}'
 
-## Setup Networking & Storage
-docker network create my-net
+# Dashboard
+open http://localhost:9092/
+```
 
-## Run Master (Mounting local scripts to /scripts)
-docker run -d --name master-node --network my-net \
-  -v $(pwd)/test_scripts:/scripts \
-  -p 9092:9092 -p 50051:50051 \
-  master-worker:v1 ./main master
+### Docker Compose
 
-## Run Worker (Pointing to Master's container name)
-docker run -d --name worker-node --network my-net \
-  -e MASTER_ADDR=master-node:50051 \
-  -v $(pwd)/test_scripts:/scripts \
-  master-worker:v1 ./main worker
+```bash
+docker compose up --build
 
-## Trigger (Path is now relative to the container's mount)
-curl -X POST "http://localhost:9092/tasks?dir=/scripts"
-
-# Docker Cleanup
-
-## Stop and remove containers
-docker stop worker-node master-node
-docker rm worker-node master-node
-
-## Remove the custom network
-docker network rm my-net
-
-# Kubernetes & Helm
-
-## Spin up Multi-Node Cluster
-kind create cluster --name mw-cluster --config kind-config.yaml
-
-## Sideload Image into Kind
-kind load docker-image master-worker:v1 --name mw-cluster
-
-## Deploy via Helm
-helm install my-release ./charts/master-worker
-
-## Verify Nodes and Pods
-kubectl get nodes
-kubectl get pods -o wide
-
-## Create Tunnel for API access
-kubectl port-forward svc/master-service 9092:9092
-
-## Trigger (Using the ConfigMap mount path)
+# Submit tasks
 curl -X POST "http://localhost:9092/tasks?dir=/etc/scripts"
+curl -X POST http://localhost:9092/api/v1/submit \
+  -d '{"language":"bash","script":"echo hello from Docker"}'
 
-## Observe the Orchestration
-kubectl logs -f deployment/master
+# Dashboard: http://localhost:9092/
+# Prometheus: http://localhost:9090/
+# Grafana: http://localhost:3000/ (admin/admin)
+```
 
-# Kubernetes & Helm Cleanup
+### Kubernetes (Kind)
 
-## Uninstall the Helm release
-helm uninstall my-release
+```bash
+./deploy.sh                          # Build + create cluster + Helm install
+kubectl port-forward svc/master-service 9092:9092
+curl -X POST "http://localhost:9092/tasks?dir=/etc/scripts"
+./destroy.sh                         # Tear down
+```
 
-## Delete the Kind Cluster
-kind delete cluster --name mw-cluster
+## API Reference
 
-## Check up any lingering port-forwards
-sudo lsof -i :9092
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/healthz` | GET | Liveness probe |
+| `/readyz` | GET | Readiness probe |
+| `/metrics` | GET | Prometheus metrics |
+| `/tasks?dir=<path>` | POST | Enqueue .sh files from directory |
+| `/api/v1/submit` | POST | Submit inline script (JSON body) |
+| `/api/v1/upload` | POST | Upload tar.gz archive (multipart) |
+| `/api/v1/stats` | GET | Scheduler statistics |
+| `/api/v1/workers` | GET | Worker registry |
+| `/api/v1/tasks` | GET | All tasks |
+| `/api/v1/dead-letter` | GET | Dead letter queue |
+| `/api/v1/dead-letter/{id}/retry` | POST | Retry from DLQ |
+| `/api/v1/events` | GET | WebSocket event stream |
+| `/debug/pprof/` | GET | Go profiling |
+| `/` | GET | Web dashboard |
 
-# TODOs
-    High Availability Master: Implement concensus to have a standby Master if the primary fails or shadow backup thing GPS/HDFS
+### Submit Inline Script
 
-    Use a Write-Ahead Log or KV store to store task results so they survive a Master reboot.
+```bash
+curl -X POST http://localhost:9092/api/v1/submit \
+  -H "Content-Type: application/json" \
+  -d '{"language":"python","script":"print(\"distributed systems are cool\")"}'
+```
 
-    Service Discovery
+### Upload Archive
+
+```bash
+tar czf myproject.tar.gz -C myproject .
+curl -X POST http://localhost:9092/api/v1/upload \
+  -F "archive=@myproject.tar.gz" \
+  -F "entrypoint=./run.sh" \
+  -F "language=bash"
+```
+
+## Architecture
+
+```
+                    ┌──────────────────────┐
+                    │   HTTP Clients       │
+                    │  (curl, dashboard)   │
+                    └──────────┬───────────┘
+                               │ REST API + WebSocket
+                    ┌──────────▼───────────┐
+                    │      MASTER          │
+                    │  ┌────────────────┐  │
+                    │  │ Priority Queue │  │
+                    │  │  Scheduler     │  │
+                    │  └───────┬────────┘  │
+                    │  ┌───────▼────────┐  │
+                    │  │  gRPC Server   │  │
+                    │  │ (streaming)    │  │
+                    │  └───┬───┬───┬────┘  │
+                    │      │   │   │       │
+                    └──────┼───┼───┼───────┘
+                           │   │   │  Server-streaming RPC
+              ┌────────────┘   │   └────────────┐
+              ▼                ▼                 ▼
+       ┌──────────┐    ┌──────────┐      ┌──────────┐
+       │ WORKER 1 │    │ WORKER 2 │      │ WORKER N │
+       │ bash/py/ │    │ bash/py/ │      │ bash/py/ │
+       │  node    │    │  node    │      │  node    │
+       └──────────┘    └──────────┘      └──────────┘
+```
+
+## Distributed Systems Concepts
+
+| Concept | Implementation | Reference |
+|---------|---------------|-----------|
+| Heartbeat failure detection | ACTIVE → SUSPECT → DEAD | HDFS NameNode |
+| Server-streaming RPC | Push-based task dispatch | gRPC patterns |
+| Priority queue scheduling | Heap with priority + FIFO | Linux CFS, K8s scheduler |
+| Exponential backoff + jitter | Retry with 2^n + random | AWS architecture blog |
+| Circuit breaker | Per-worker fault isolation | Netflix Hystrix |
+| Dead letter queue | Exhausted retry sink | Amazon SQS, RabbitMQ |
+| At-least-once delivery | Re-queue on worker disconnect | MapReduce |
+| Structured concurrency | errgroup for goroutine lifecycle | Go concurrency patterns |
+| Repository pattern | TaskStore interface | K8s etcd abstraction |
+| 12-Factor config | All config from env vars | Heroku methodology |
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GRPC_PORT` | `:50051` | Master gRPC listen port |
+| `HTTP_PORT` | `:9092` | Master HTTP API port |
+| `MASTER_ADDR` | `localhost:50051` | Worker → master address |
+| `LOG_LEVEL` | `info` | debug, info, warn, error |
+| `LOG_FORMAT` | `text` | text or json |
+| `HEARTBEAT_INTERVAL` | `10s` | Worker heartbeat frequency |
+| `HEARTBEAT_TIMEOUT` | `30s` | Mark worker SUSPECT after |
+| `WORKER_DEAD_TIMEOUT` | `60s` | Mark worker DEAD after |
+
+## Development
+
+```bash
+make proto       # Regenerate protobuf
+make build       # Build binary
+make test        # Run tests (27 tests across 6 packages)
+make lint        # Run linter
+make docker      # Build Docker image
+make loadtest    # Run load test
+make chaos       # Run chaos test (requires K8s)
+```
+
+## Project Structure
+
+```
+├── api/                        # Protocol Buffers + generated gRPC code
+├── cmd/loadtest/               # Load testing tool
+├── charts/master-worker/       # Helm chart (master, workers, Prometheus, Grafana)
+│   └── templates/
+│       ├── master-deploy.yaml
+│       ├── worker-deploy.yaml
+│       ├── hpa.yaml            # Horizontal Pod Autoscaler
+│       ├── pdb.yaml            # Pod Disruption Budget
+│       ├── networkpolicy.yaml  # Network segmentation
+│       ├── serviceaccount.yaml # Dedicated service accounts
+│       └── servicemonitor.yaml # Prometheus Operator CRD
+├── internal/
+│   ├── circuitbreaker/         # Per-worker fault isolation
+│   ├── config/                 # 12-Factor env config
+│   ├── events/                 # Pub/sub event bus for WebSocket
+│   ├── health/                 # K8s liveness + readiness probes
+│   ├── interceptors/           # gRPC logging/metrics middleware
+│   ├── logging/                # Structured logging (slog)
+│   ├── master/                 # Master lifecycle + HTTP handlers
+│   ├── metrics/                # Prometheus metrics
+│   ├── middleware/             # Rate limiting
+│   ├── server/                 # gRPC NodeService implementation
+│   ├── store/                  # Task persistence (memory + BadgerDB)
+│   ├── task/                   # Task state machine + scheduler
+│   ├── tls/                    # mTLS helpers
+│   ├── tracing/                # OpenTelemetry setup
+│   └── worker/                 # Worker execution engine
+├── monitoring/                 # Prometheus + Grafana configs
+├── scripts/                    # Cert generation + chaos testing
+├── test_scripts/               # Sample scripts (bash, python, node)
+├── web/                        # Dashboard (embedded in binary)
+├── docker-compose.yml          # Full stack local deployment
+├── Dockerfile                  # Multi-stage, non-root, multi-language
+├── deploy.sh                   # Kind + Helm deployment
+└── main.go                     # Single binary entry point
+```
+
+## Tech Stack
+
+Go, gRPC, Protocol Buffers, Prometheus, OpenTelemetry, BadgerDB, WebSocket, Docker, Kubernetes, Helm

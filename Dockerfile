@@ -1,29 +1,31 @@
-# STAGE 1: Build the binary
+# STAGE 1: Build the Go binary
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Copy go.mod and sum first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the source code
 COPY . .
 
-# Build the app (CGO_ENABLED=0 ensures a static binary for Alpine)
+# Static binary for scratch/alpine (no CGO needed)
 RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-# STAGE 2: Final small image
+# STAGE 2: Production runtime
+# Multi-language support: bash + python3 + node for heterogeneous task execution.
 FROM alpine:latest
 
-# Install bash because workers use it to run scripts
-RUN apk add --no-cache bash
+# Install runtimes for multi-language task execution + tar for archive extraction.
+RUN apk add --no-cache bash python3 nodejs tar && \
+    addgroup -S appgroup && \
+    adduser -S appuser -G appgroup
 
-WORKDIR /root/
+WORKDIR /home/appuser
 
-# Copy the binary from the builder stage
 COPY --from=builder /app/main .
+RUN chown appuser:appgroup main
 
-# Don't use ENTRYPOINT here because main.go needs 
-# arguments (master or worker) which will be provided at runtime.
+# Run as non-root (security hardening — principle of least privilege).
+USER appuser
+
 CMD ["./main"]

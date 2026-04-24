@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MW-Orchestrator // Dashboard</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #FFFFFF;
+            --bg-card: #F7F7F8;
+            --bg-hover: #EEEEF0;
+            --border: #E5E5E5;
+            --border-strong: #D1D5DB;
+            --text-primary: #1A1A2E;
+            --text-secondary: #6B7280;
+            --text-muted: #9CA3AF;
+            --accent: #00B8D4;
+            --accent-light: rgba(0, 184, 212, 0.08);
+            --accent-glow: rgba(0, 184, 212, 0.25);
+            --accent-mid: rgba(0, 184, 212, 0.15);
+            --success: #00C853;
+            --success-light: rgba(0, 200, 83, 0.08);
+            --error: #FF1744;
+            --error-light: rgba(255, 23, 68, 0.08);
+            --warning: #FFAB00;
+            --warning-light: rgba(255, 171, 0, 0.08);
+            --info: #448AFF;
+            --info-light: rgba(68, 138, 255, 0.08);
+            --purple: #7C4DFF;
+            --purple-light: rgba(124, 77, 255, 0.08);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+            background-image:
+                linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+            background-size: 40px 40px;
+            min-height: 100vh;
+        }
+
+        /* -- Header -- */
+        .header {
+            border-bottom: 1px solid var(--border);
+            padding: 14px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.92);
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo-icon { display: flex; align-items: center; gap: 10px; }
+        .logo-icon svg { width: 32px; height: 32px; }
+        .header h1 { font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
+        .header-subtitle { color: var(--text-muted); font-size: 12px; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .ws-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: all 0.3s; }
+        .ws-dot.connected { background: var(--success); box-shadow: 0 0 8px rgba(0,200,83,0.4); }
+        .ws-dot.disconnected { background: var(--error); box-shadow: 0 0 8px rgba(255,23,68,0.4); }
+        .ws-dot.connecting { background: var(--warning); }
+        .header-btn { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 14px; font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+        .header-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+        /* -- Stats Grid -- */
+        .stats-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
+        .stats-grid-secondary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } .stats-grid-secondary { grid-template-columns: repeat(2, 1fr); } }
+        .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow); }
+        .stat-card:hover { box-shadow: var(--shadow-lg); }
+        /* flash animation removed for perf */
+        .stat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; }
+        .stat-value { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+        .stat-value.sm { font-size: 22px; }
+        .stat-value.accent { color: var(--accent); }
+        .stat-value.success { color: var(--success); }
+        .stat-value.error { color: var(--error); }
+        .stat-value.warning { color: var(--warning); }
+        .stat-value.info { color: var(--info); }
+
+        /* -- Topology SVG -- */
+        .topology-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 28px; margin-bottom: 24px; box-shadow: var(--shadow); }
+        .topology-svg { width: 100%; height: 280px; }
+
+        /* -- Panels -- */
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        @media (max-width: 1100px) { .three-col { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+        .panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 24px; }
+        .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .panel-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-secondary); }
+        .panel-body { padding: 16px 20px; max-height: 420px; overflow-y: auto; }
+
+        /* -- Buttons -- */
+        .btn { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-family: inherit; font-size: 12px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+        .btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-accent { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-accent:hover { background: #00a5bf; box-shadow: 0 0 12px var(--accent-glow); }
+        .btn-accent:disabled { background: var(--accent); opacity: 0.5; }
+        .btn-danger { border-color: var(--error); color: var(--error); }
+        .btn-danger:hover { background: var(--error-light); }
+        .btn-warn { border-color: var(--warning); color: var(--warning); }
+        .btn-warn:hover { background: var(--warning-light); }
+        .btn-success { border-color: var(--success); color: var(--success); }
+        .btn-success:hover { background: var(--success-light); }
+        .btn-sm { padding: 3px 8px; font-size: 11px; }
+        .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+        /* -- Workers -- */
+        .worker-grid { display: flex; flex-direction: column; gap: 8px; }
+        .worker-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+        .worker-card.active { border-left: 3px solid var(--success); }
+        .worker-card.active .worker-dot { background: var(--success); box-shadow: 0 0 8px rgba(0,200,83,0.4); }
+        .worker-card.suspect { border-left: 3px solid var(--warning); }
+        .worker-card.suspect .worker-dot { background: var(--warning); }
+        .worker-card.dead { border-left: 3px solid var(--error); opacity: 0.6; }
+        .worker-card.dead .worker-dot { background: var(--error); }
+        .worker-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+        .worker-id { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; color: var(--accent); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .worker-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+        .worker-state { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+        .worker-state.active { background: var(--success-light); color: var(--success); }
+        .worker-state.suspect { background: var(--warning-light); color: var(--warning); }
+        .worker-state.dead { background: var(--error-light); color: var(--error); }
+
+        /* -- Submit -- */
+        .submit-section { display: flex; flex-direction: column; gap: 12px; }
+        .submit-section select, .submit-section textarea {
+            background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 10px 12px; transition: border-color 0.15s;
+        }
+        .submit-section select:focus, .submit-section textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+        .submit-section textarea { width: 100%; height: 120px; resize: vertical; line-height: 1.5; }
+        .submit-result { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); }
+
+        /* -- Chaos -- */
+        .chaos-section { display: flex; flex-direction: column; gap: 14px; }
+        .chaos-group { padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+        .chaos-label { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+        .chaos-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+        .chaos-select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-primary); min-width: 0; }
+
+        /* -- Stress Test -- */
+        .loadtest-section { display: flex; flex-direction: column; gap: 12px; }
+        .loadtest-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .loadtest-input { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; width: 80px; color: var(--text-primary); }
+        .loadtest-input:focus { outline: none; border-color: var(--accent); }
+        .loadtest-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+        .loadtest-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .loadtest-stat { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; text-align: center; }
+        .loadtest-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .loadtest-stat-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+        /* -- Event Log -- */
+        .event-log { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; }
+        .event-entry { display: flex; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(0,0,0,0.04); align-items: baseline; }
+        /* event-flash animation removed for perf */
+        .event-entry:hover { background: var(--bg-hover); margin: 0 -20px; padding: 4px 20px; }
+        .event-ts { color: var(--text-muted); min-width: 75px; flex-shrink: 0; }
+        .event-type { min-width: 160px; font-weight: 600; flex-shrink: 0; }
+        .event-type.task_queued { color: var(--info); }
+        .event-type.task_assigned { color: var(--warning); }
+        .event-type.task_completed { color: var(--success); }
+        .event-type.task_failed { color: var(--error); }
+        .event-type.task_retrying { color: var(--purple); }
+        .event-type.task_dead { color: var(--error); }
+        .event-type.worker_connected { color: var(--success); }
+        .event-type.worker_disconnected { color: var(--error); }
+        .event-type.worker_suspect { color: var(--warning); }
+        .event-type.worker_dead { color: var(--error); }
+        .event-type.chaos_worker_killed { color: var(--error); }
+        .event-type.chaos_cb_tripped { color: var(--warning); }
+        .event-type.chaos_cb_reset { color: var(--success); }
+        .event-type.batch_submitted { color: var(--purple); }
+        .event-data { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* -- Tables -- */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 13px; }
+        tr:hover td { background: rgba(0,0,0,0.015); }
+        .task-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+        .tag.queued { background: var(--info-light); color: var(--info); }
+        .tag.assigned { background: var(--accent-light); color: var(--accent); }
+        .tag.running { background: var(--warning-light); color: var(--warning); }
+        .tag.completed { background: var(--success-light); color: var(--success); }
+        .tag.failed { background: var(--error-light); color: var(--error); }
+        .tag.retrying { background: var(--purple-light); color: var(--purple); }
+        .tag.dead { background: var(--error-light); color: var(--error); }
+
+        /* -- Task Expand -- */
+        .task-row { cursor: pointer; }
+        .task-row:hover td { background: var(--accent-light); }
+        .expand-icon { display: inline-block; width: 16px; text-align: center; color: var(--text-muted); transition: transform 0.2s; font-size: 11px; }
+        .expand-icon.open { transform: rotate(90deg); }
+        .task-output-preview { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .task-detail { display: none; }
+        .task-detail.open { display: block; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); margin: 4px 12px 12px; }
+        .task-detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+        @media (max-width: 600px) { .task-detail-grid { grid-template-columns: 1fr; } }
+        .task-detail-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .task-detail-value { font-size: 13px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .task-output-box { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #1A1A2E; color: #E0E6ED; border-radius: 6px; padding: 12px 16px; white-space: pre-wrap; word-break: break-all; max-height: 250px; overflow-y: auto; margin-top: 8px; line-height: 1.5; }
+        .task-output-box.error-text { border-left: 3px solid var(--error); }
+
+        /* -- Task Filters -- */
+        .task-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+        .task-filter { padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.15s; background: var(--bg); color: var(--text-muted); }
+        .task-filter:hover { border-color: var(--accent); color: var(--accent); }
+        .task-filter.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        /* output-highlight animation removed for perf */
+
+        /* -- Empty -- */
+        .empty { color: var(--text-muted); font-size: 13px; padding: 24px 0; text-align: center; }
+
+        /* -- Docs Modal -- */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 200; backdrop-filter: blur(4px); }
+        .modal-overlay.open { display: flex; justify-content: center; align-items: center; }
+        .modal { background: var(--bg); border-radius: var(--radius); box-shadow: var(--shadow-lg); width: 90%; max-width: 800px; max-height: 80vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { font-size: 16px; font-weight: 600; }
+        .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); padding: 4px 8px; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+        .doc-list { display: flex; flex-direction: column; gap: 12px; }
+        .doc-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; cursor: pointer; transition: all 0.15s; }
+        .doc-item:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+        .doc-item-title { font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+        .doc-item-desc { font-size: 13px; color: var(--text-secondary); }
+        .doc-content { font-size: 14px; line-height: 1.7; }
+        .doc-back { margin-bottom: 16px; }
+
+        /* -- Rendered Markdown -- */
+        .md-h1 { font-size: 22px; font-weight: 700; color: var(--text-primary); margin: 20px 0 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
+        .md-h2 { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 18px 0 10px; }
+        .md-h3 { font-size: 15px; font-weight: 600; color: var(--text-secondary); margin: 14px 0 8px; }
+        .md-h4 { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 12px 0 6px; }
+        .md-p { margin: 8px 0; color: var(--text-secondary); line-height: 1.7; }
+        .md-code { background: #1A1A2E; color: #E0E6ED; border-radius: 6px; padding: 12px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-x: auto; margin: 10px 0; white-space: pre; display: block; line-height: 1.5; }
+        .md-inline-code { background: var(--bg-hover); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .md-list { margin: 8px 0 8px 24px; color: var(--text-secondary); }
+        .md-list li { margin: 4px 0; line-height: 1.6; }
+        .md-link { color: var(--accent); text-decoration: none; }
+        .md-link:hover { text-decoration: underline; }
+        .md-hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+        .md-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+        .md-table th, .md-table td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+        .md-table th { background: var(--bg-card); font-weight: 600; color: var(--text-primary); }
+        .md-table td { color: var(--text-secondary); }
+
+        /* -- Educational -- */
+        .edu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        .edu-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; transition: all 0.2s; }
+        .edu-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+        .edu-card-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+        .edu-card-body { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .edu-card-ref { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-style: italic; }
+
+        /* -- Scrollbar -- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+        /* -- Footer -- */
+        .footer { text-align: center; padding: 24px; color: var(--text-muted); font-size: 12px; border-top: 1px solid var(--border); margin-top: 16px; }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="logo-icon">
+                <svg viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="8" r="5" fill="var(--accent)" opacity="0.9"/>
+                    <circle cx="6" cy="26" r="4" fill="var(--accent)" opacity="0.5"/>
+                    <circle cx="26" cy="26" r="4" fill="var(--accent)" opacity="0.5"/>
+                    <line x1="16" y1="13" x2="6" y2="22" stroke="var(--accent)" stroke-width="1.5" opacity="0.4"/>
+                    <line x1="16" y1="13" x2="26" y2="22" stroke="var(--accent)" stroke-width="1.5" opacity="0.4"/>
+                </svg>
+                <div>
+                    <h1>MW-ORCHESTRATOR</h1>
+                    <div class="header-subtitle">Distributed Task Execution Engine</div>
+                </div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="ws-status">
+                <div class="ws-dot connecting" id="ws-dot"></div>
+                <span id="ws-label">connecting</span>
+            </div>
+            <button class="header-btn" onclick="openDocs()">Docs</button>
+            <button class="header-btn" onclick="window.open('/metrics','_blank')">Metrics</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Stats Grid: Primary -->
+        <div class="stats-grid">
+            <div class="stat-card" id="sc-queue"><div class="stat-label">Queue</div><div class="stat-value info" id="s-queue">-</div></div>
+            <div class="stat-card" id="sc-flight"><div class="stat-label">In Flight</div><div class="stat-value warning" id="s-flight">-</div></div>
+            <div class="stat-card" id="sc-done"><div class="stat-label">Completed</div><div class="stat-value success" id="s-done">0</div></div>
+            <div class="stat-card" id="sc-fail"><div class="stat-label">Failed</div><div class="stat-value error" id="s-fail">0</div></div>
+            <div class="stat-card" id="sc-workers"><div class="stat-label">Workers</div><div class="stat-value accent" id="s-workers">-</div></div>
+            <div class="stat-card" id="sc-dlq"><div class="stat-label">Dead Letter</div><div class="stat-value error" id="s-dlq">-</div></div>
+        </div>
+
+        <!-- Stats Grid: Computed Metrics -->
+        <div class="stats-grid-secondary">
+            <div class="stat-card"><div class="stat-label">Success Rate</div><div class="stat-value sm success" id="s-success-rate">-</div></div>
+            <div class="stat-card"><div class="stat-label">Avg Duration</div><div class="stat-value sm accent" id="s-avg-duration">-</div></div>
+            <div class="stat-card"><div class="stat-label">Throughput</div><div class="stat-value sm info" id="s-throughput">-</div></div>
+            <div class="stat-card"><div class="stat-label">Retry Rate</div><div class="stat-value sm warning" id="s-retry-rate">-</div></div>
+        </div>
+
+        <!-- Live Topology -->
+        <div class="topology-panel">
+            <div class="panel-header" style="padding:0 0 16px 0;border:none">
+                <span class="panel-title">Live System Topology</span>
+                <div style="display:flex;gap:12px;font-size:11px;color:var(--text-muted)">
+                    <span><span style="color:var(--success)">&#9679;</span> Active</span>
+                    <span><span style="color:var(--warning)">&#9679;</span> Suspect</span>
+                    <span><span style="color:var(--error)">&#9679;</span> Dead</span>
+                    <span style="font-family:'JetBrains Mono',monospace"><span style="background:var(--success-light);padding:1px 4px;border-radius:3px;color:var(--success)">CB</span> Circuit Breaker</span>
+                </div>
+            </div>
+            <svg class="topology-svg" id="topology-svg" viewBox="0 0 1000 280"></svg>
+        </div>
+
+        <!-- Workers + Chaos Engineering -->
+        <div class="two-col">
+            <div class="panel" style="margin-bottom:0">
+                <div class="panel-header"><span class="panel-title">Workers</span><button class="btn btn-sm" onclick="refreshWorkers()">Refresh</button></div>
+                <div class="panel-body"><div class="worker-grid" id="worker-list"><div class="empty">No workers connected</div></div></div>
+            </div>
+            <div class="panel" style="margin-bottom:0">
+                <div class="panel-header">
+                    <span class="panel-title" style="color:var(--error)">Chaos Engineering</span>
+                    <span style="font-size:11px;color:var(--text-muted)">Fault Injection</span>
+                </div>
+                <div class="panel-body">
+                    <div class="chaos-section">
+                        <div class="chaos-group">
+                            <div class="chaos-label">Disconnect Worker</div>
+                            <div class="chaos-desc">Cancel a worker's gRPC stream. In-flight tasks requeue automatically.</div>
+                            <div class="btn-row" style="margin-top:8px">
+                                <select id="chaos-worker-select" class="chaos-select" style="flex:1"><option value="">Select worker...</option></select>
+                                <button class="btn btn-danger" onclick="chaosKillWorker()">Kill</button>
+                            </div>
+                        </div>
+                        <div class="chaos-group">
+                            <div class="chaos-label">Circuit Breaker</div>
+                            <div class="chaos-desc">Trip = stop assigning tasks. Reset = resume. Tests fault isolation.</div>
+                            <div class="btn-row" style="margin-top:8px">
+                                <select id="chaos-cb-select" class="chaos-select" style="flex:1"><option value="">Select worker...</option></select>
+                                <button class="btn btn-warn" onclick="chaosTripCB()">Trip</button>
+                                <button class="btn btn-success" onclick="chaosResetCB()">Reset</button>
+                            </div>
+                        </div>
+                        <div class="chaos-group">
+                            <div class="chaos-label">Inject Failing Tasks</div>
+                            <div class="chaos-desc">Submit tasks that exit(1) to test retry and DLQ flows.</div>
+                            <div class="btn-row" style="margin-top:8px">
+                                <input type="number" class="loadtest-input" id="chaos-fail-count" value="5" min="1" max="100" style="width:60px">
+                                <select id="chaos-fail-lang" class="chaos-select"><option value="bash">Bash</option><option value="python">Python</option></select>
+                                <button class="btn btn-danger" onclick="chaosInjectFails()">Inject</button>
+                            </div>
+                        </div>
+                        <div id="chaos-result" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);min-height:18px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Task + Stress Test -->
+        <div class="two-col">
+            <div class="panel" style="margin-bottom:0">
+                <div class="panel-header"><span class="panel-title">Submit Task</span></div>
+                <div class="panel-body">
+                    <div class="submit-section">
+                        <div class="btn-row">
+                            <select id="lang"><option value="bash">Bash</option><option value="python">Python</option><option value="node">Node.js</option></select>
+                            <button class="btn btn-accent" onclick="submitTask()">Execute</button>
+                            <button class="btn" onclick="loadExample()">Example</button>
+                        </div>
+                        <textarea id="script-input" placeholder="# Enter your script here...&#10;echo &quot;Hello from $(hostname)&quot;"></textarea>
+                        <div class="submit-result" id="submit-result"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel" style="margin-bottom:0">
+                <div class="panel-header"><span class="panel-title">Stress Test</span><span style="font-size:11px;color:var(--text-muted)">Server-side batch generation</span></div>
+                <div class="panel-body">
+                    <div class="loadtest-section">
+                        <div class="loadtest-row">
+                            <span class="loadtest-label">Tasks:</span>
+                            <input type="number" class="loadtest-input" id="lt-count" value="100" min="1" max="10000">
+                            <span class="loadtest-label">Sleep (ms):</span>
+                            <input type="number" class="loadtest-input" id="lt-sleep" value="100" min="0" max="5000" style="width:70px">
+                        </div>
+                        <div class="loadtest-row">
+                            <select id="lt-lang" class="chaos-select">
+                                <option value="bash">Bash</option>
+                                <option value="python">Python</option>
+                                <option value="node">Node.js</option>
+                            </select>
+                            <select id="lt-priority" class="chaos-select">
+                                <option value="1">Normal priority</option>
+                                <option value="0">Low priority</option>
+                                <option value="2">High priority</option>
+                            </select>
+                            <button class="btn btn-accent" id="lt-start" onclick="startStressTest()">Generate Batch</button>
+                        </div>
+                        <div class="loadtest-results">
+                            <div class="loadtest-stat"><div class="loadtest-stat-label">Batch Size</div><div class="loadtest-stat-value" id="lt-sent" style="color:var(--info)">0</div></div>
+                            <div class="loadtest-stat"><div class="loadtest-stat-label">Gen Time</div><div class="loadtest-stat-value" id="lt-gentime" style="color:var(--accent)">-</div></div>
+                            <div class="loadtest-stat"><div class="loadtest-stat-label">Gen Rate</div><div class="loadtest-stat-value" id="lt-rate" style="color:var(--warning)">-</div></div>
+                            <div class="loadtest-stat"><div class="loadtest-stat-label">Status</div><div class="loadtest-stat-value" id="lt-status" style="color:var(--text-muted);font-size:12px">Ready</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Latest Task Output (always visible) -->
+        <div class="panel" id="output-panel">
+            <div class="panel-header">
+                <span class="panel-title">Task Output</span>
+                <div class="btn-row">
+                    <span style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace" id="output-task-id"></span>
+                    <button class="btn btn-sm" onclick="clearOutput()">Clear</button>
+                </div>
+            </div>
+            <div id="output-meta" style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+                <span id="output-state" class="tag" style="display:none"></span>
+                <span style="font-size:12px;color:var(--text-secondary)" id="output-worker"></span>
+                <span style="font-size:12px;color:var(--text-secondary)" id="output-duration"></span>
+                <span style="font-size:12px;color:var(--text-secondary)" id="output-exitcode"></span>
+            </div>
+            <div class="task-output-box" id="output-content" style="margin:0;border-radius:0 0 12px 12px;max-height:300px;color:var(--text-muted)">Submit a task above to see its output here. Tasks will auto-display when completed.</div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Event Log</span>
+                <div class="btn-row">
+                    <span style="font-size:11px;color:var(--text-muted)" id="event-count">0 events</span>
+                    <button class="btn btn-sm" onclick="clearEvents()">Clear</button>
+                </div>
+            </div>
+            <div class="panel-body event-log" id="elog"><div class="empty">Waiting for events...</div></div>
+        </div>
+
+        <!-- Tasks Table -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Tasks</span>
+                <div class="btn-row">
+                    <div class="task-filters" id="task-filters">
+                        <span class="task-filter active" data-filter="all" onclick="setTaskFilter('all')">All</span>
+                        <span class="task-filter" data-filter="QUEUED" onclick="setTaskFilter('QUEUED')">Queued</span>
+                        <span class="task-filter" data-filter="ASSIGNED" onclick="setTaskFilter('ASSIGNED')">Assigned</span>
+                        <span class="task-filter" data-filter="RUNNING" onclick="setTaskFilter('RUNNING')">Running</span>
+                        <span class="task-filter" data-filter="COMPLETED" onclick="setTaskFilter('COMPLETED')">Done</span>
+                        <span class="task-filter" data-filter="FAILED" onclick="setTaskFilter('FAILED')">Failed</span>
+                        <span class="task-filter" data-filter="RETRYING" onclick="setTaskFilter('RETRYING')">Retrying</span>
+                        <span class="task-filter" data-filter="DEAD" onclick="setTaskFilter('DEAD')">Dead</span>
+                    </div>
+                    <span style="font-size:11px;color:var(--text-muted)" id="task-count">0 tasks</span>
+                    <button class="btn btn-sm" onclick="refreshTasks()">Refresh</button>
+                </div>
+            </div>
+            <!-- Truncation notice: visible only when queue > dashboard cap -->
+            <div id="task-truncation-notice" style="display:none;padding:6px 20px;background:var(--warning-light);border-bottom:1px solid var(--border);font-size:12px;color:var(--warning);font-family:'JetBrains Mono',monospace"></div>
+            <div class="panel-body" style="padding: 0; max-height: 500px;">
+                <table>
+                    <thead><tr><th style="width:30px"></th><th>ID</th><th>State</th><th>Type</th><th>Worker</th><th>Duration</th><th>Output</th><th>Attempt</th></tr></thead>
+                    <tbody id="task-tb"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Dead Letter Queue -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Dead Letter Queue</span>
+                <div class="btn-row">
+                    <button class="btn btn-sm btn-warn" onclick="retryAllDLQ()">Retry All</button>
+                    <button class="btn btn-sm" onclick="refreshDLQ()">Refresh</button>
+                </div>
+            </div>
+            <div class="panel-body" style="padding: 0;">
+                <table>
+                    <thead><tr><th>ID</th><th>Type</th><th>Lang</th><th>Error</th><th>Attempts</th><th>Exit</th><th>Action</th></tr></thead>
+                    <tbody id="dlq-tb"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Educational Concepts -->
+        <div class="panel">
+            <div class="panel-header"><span class="panel-title">Distributed Systems Concepts</span></div>
+            <div class="panel-body">
+                <div class="edu-grid">
+                    <div class="edu-card"><div class="edu-card-title">Heartbeat Failure Detection</div><div class="edu-card-body">Workers send periodic heartbeats. Miss one timeout: SUSPECT. Miss two: DEAD. Tasks from dead workers auto-requeue.</div><div class="edu-card-ref">HDFS NameNode, Cassandra Phi Accrual</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Server-Streaming gRPC</div><div class="edu-card-body">Push-based task dispatch over long-lived streams. Zero polling overhead. First goroutine to read gets the task.</div><div class="edu-card-ref">K8s watch API, gRPC load balancing</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Priority Queue Scheduling</div><div class="edu-card-body">Tasks dispatched by priority (heap), then FIFO within same level. O(log n) via container/heap.</div><div class="edu-card-ref">Linux CFS, K8s scheduler</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Circuit Breaker</div><div class="edu-card-body">Per-worker breakers prevent sending tasks to failing workers. CLOSED / OPEN / HALF_OPEN states.</div><div class="edu-card-ref">Netflix Hystrix, Envoy proxy</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Exponential Backoff + Jitter</div><div class="edu-card-body">Retry delay = base * 2^attempt + random. Prevents thundering herd on failure storms.</div><div class="edu-card-ref">AWS Architecture Blog</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Dead Letter Queue</div><div class="edu-card-body">Tasks exhausting retries land here for inspection. Click Retry to requeue them.</div><div class="edu-card-ref">Amazon SQS, RabbitMQ</div></div>
+                    <div class="edu-card"><div class="edu-card-title">At-Least-Once Delivery</div><div class="edu-card-body">Worker disconnects before ack? Master requeues. Tasks may run twice but never get lost.</div><div class="edu-card-ref">MapReduce, SQS visibility timeout</div></div>
+                    <div class="edu-card"><div class="edu-card-title">Structured Concurrency</div><div class="edu-card-body">errgroup manages goroutine lifecycle. If any server fails, all cancel gracefully.</div><div class="edu-card-ref">K8s controller-manager, CockroachDB</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        MW-Orchestrator &middot; <a href="/api/v1/stats">API</a> &middot; <a href="/metrics">Metrics</a> &middot; <a href="/debug/pprof/">Profiling</a> &middot; <a href="javascript:openDocs()">Documentation</a>
+    </div>
+
+    <!-- Docs Modal -->
+    <div class="modal-overlay" id="docs-modal">
+        <div class="modal">
+            <div class="modal-header"><h2 id="docs-title">Documentation</h2><button class="modal-close" onclick="closeDocs()">&times;</button></div>
+            <div class="modal-body" id="docs-body"><div class="doc-list" id="doc-list"></div></div>
+        </div>
+    </div>
+
+    <script>
+    const B = window.location.origin;
+    const WS_URL = `ws://${window.location.host}/api/v1/events`;
+
+    // -- State --
+    let prevStats = {};
+    let eventCount = 0;
+    let lastTasks = [];
+    let lastWorkers = [];
+    let expandedTaskId = null;
+    let lastOutputTaskId = null;
+    let trackedTaskId = null;
+    let taskFilter = 'all';
+
+    // -- Helpers --
+    const _escDiv = document.createElement('div');
+    function esc(s) { _escDiv.textContent = s; return _escDiv.innerHTML; }
+
+    function formatDuration(ms) {
+        if (ms <= 0) return '-';
+        if (ms < 1000) return ms + 'ms';
+        if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+        return (ms / 60000).toFixed(1) + 'min';
+    }
+
+    function shortId(id) {
+        if (!id) return '-';
+        return id.length > 24 ? id.substring(0, 20) + '...' : id;
+    }
+
+    // -- WebSocket (passive: counts events, buffers last 50 for log, never triggers refresh) --
+    let ws = null, wsRetryCount = 0;
+    let wsEventBuffer = [];    // ring buffer of last 50 events for the log
+    let wsEventsFlushed = 0;   // how many we've rendered so far
+    function connectWS() {
+        const dot = document.getElementById('ws-dot'), lbl = document.getElementById('ws-label');
+        dot.className = 'ws-dot connecting'; lbl.textContent = 'connecting';
+        ws = new WebSocket(WS_URL);
+        ws.onopen = () => { dot.className = 'ws-dot connected'; lbl.textContent = 'connected'; wsRetryCount = 0; };
+        ws.onclose = () => { dot.className = 'ws-dot disconnected'; lbl.textContent = 'disconnected'; setTimeout(connectWS, Math.min(1000 * Math.pow(2, wsRetryCount++), 30000)); };
+        ws.onerror = () => {};
+        ws.onmessage = (e) => {
+            eventCount++;
+            // Only keep last 50 events in memory
+            if (wsEventBuffer.length >= 50) wsEventBuffer.shift();
+            wsEventBuffer.push(e.data); // keep raw string, parse lazily
+        };
+    }
+
+    // -- Polling: single timer, sequential fetches to avoid request pile-up --
+    const POLL_INTERVAL = 5000;
+    let pollRunning = false;
+    async function refreshAll() {
+        if (pollRunning) return;
+        pollRunning = true;
+        try {
+            await refreshStats();
+            await refreshWorkers();
+            await refreshTasks();
+            await refreshDLQ();
+            flushEventLog();
+        } catch(e) {}
+        pollRunning = false;
+    }
+
+    // -- Event Formatting --
+    function formatEventData(type, data) {
+        if (!data) return '';
+        const d = typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch(e) { return {}; } })() : data;
+        const tid = d.task_id ? shortId(d.task_id) : '';
+        const wid = d.worker_id ? shortId(d.worker_id) : '';
+        switch (type) {
+            case 'task_queued':
+                return `Task ${tid} queued` + (d.language ? ` (${d.language})` : '') + (d.type ? ` [${d.type}]` : '');
+            case 'task_assigned':
+                return `Task ${tid} -> ${wid}` + (d.attempt ? ` (attempt ${d.attempt})` : '');
+            case 'task_completed':
+                return `Task ${tid} completed on ${wid} (exit ${d.exit_code || 0})`;
+            case 'task_failed':
+                return `Task ${tid} failed on ${wid}: ${(d.error || '').substring(0, 50)}`;
+            case 'task_retrying':
+                return `Task ${tid} retrying (exit ${d.exit_code || '?'})`;
+            case 'task_dead':
+                return `Task ${tid} -> dead letter queue`;
+            case 'worker_connected':
+                return `Worker ${wid} connected` + (d.hostname ? ` (${d.hostname})` : '');
+            case 'worker_disconnected':
+                return `Worker ${wid} disconnected`;
+            case 'worker_suspect':
+                return `Worker ${wid} suspect` + (d.silent_for ? ` (silent ${d.silent_for})` : '');
+            case 'worker_dead':
+                return `Worker ${wid} declared dead`;
+            case 'chaos_worker_killed':
+                return `Chaos: killed worker ${wid}`;
+            case 'chaos_cb_tripped':
+                return `Chaos: tripped CB for ${wid}`;
+            case 'chaos_cb_reset':
+                return `Chaos: reset CB for ${wid}`;
+            case 'batch_submitted':
+                return `Batch: ${d.count} tasks submitted` + (d.language ? ` (${d.language})` : '');
+            default:
+                return JSON.stringify(d);
+        }
+    }
+
+    // -- Event Log (flushed lazily from WS ring buffer during poll cycle) --
+    let eventLogInit = false;
+    function flushEventLog() {
+        document.getElementById('event-count').textContent = `${eventCount} events`;
+        // Only render new events since last flush
+        if (wsEventBuffer.length === 0 || wsEventsFlushed >= eventCount) return;
+        const log = document.getElementById('elog');
+        if (!eventLogInit) { log.innerHTML = ''; eventLogInit = true; }
+        // Render all buffered events (max 50) as a single innerHTML replace
+        let html = '';
+        for (let i = wsEventBuffer.length - 1; i >= 0; i--) {
+            try {
+                const ev = JSON.parse(wsEventBuffer[i]);
+                const t = new Date(ev.timestamp).toLocaleTimeString();
+                const d = ev.data ? formatEventData(ev.type, ev.data) : '';
+                html += `<div class="event-entry"><span class="event-ts">${t}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="event-data">${esc(d)}</span></div>`;
+            } catch(e) {}
+        }
+        log.innerHTML = html || '<div class="empty">Waiting for events...</div>';
+        wsEventsFlushed = eventCount;
+    }
+    function clearEvents() { document.getElementById('elog').innerHTML = '<div class="empty">Cleared</div>'; eventLogInit = false; eventCount = 0; wsEventBuffer = []; wsEventsFlushed = 0; document.getElementById('event-count').textContent = '0 events'; }
+
+    // -- Stats --
+    async function refreshStats() {
+        try {
+            const r = await fetch(`${B}/api/v1/stats`);
+            const d = await r.json();
+            updateStat('s-queue', 'sc-queue', d.queue_depth);
+            updateStat('s-flight', 'sc-flight', d.in_flight);
+            updateStat('s-done', 'sc-done', d.completed);
+            updateStat('s-fail', 'sc-fail', d.failed);
+            updateStat('s-workers', 'sc-workers', d.workers);
+            updateStat('s-dlq', 'sc-dlq', d.dead_lettered);
+
+            // Computed metrics
+            if (d.success_rate !== undefined) {
+                document.getElementById('s-success-rate').textContent = d.success_rate + '%';
+            }
+            const total = (d.completed || 0) + (d.failed || 0);
+            const retryRate = total > 0 ? ((d.failed || 0) / total * 100).toFixed(1) : '0.0';
+            document.getElementById('s-retry-rate').textContent = retryRate + '%';
+
+            prevStats = d;
+        } catch(e) {}
+    }
+    function updateStat(valId, cardId, newVal) {
+        const el = document.getElementById(valId);
+        if (String(newVal) !== el.textContent) el.textContent = newVal;
+    }
+
+    // -- Topology SVG --
+    function renderTopology(workers, stats) {
+        const svg = document.getElementById('topology-svg');
+        const ns = 'http://www.w3.org/2000/svg';
+        svg.innerHTML = '';
+
+        const W = 1000, H = 280;
+        const masterX = W / 2, masterY = 55, masterR = 32;
+
+        // Master node
+        const mg = document.createElementNS(ns, 'g');
+        mg.setAttribute('transform', `translate(${masterX},${masterY})`);
+        mg.innerHTML = `
+            <circle r="${masterR}" fill="var(--accent)" opacity="0.12" stroke="var(--accent)" stroke-width="2.5"/>
+            <text text-anchor="middle" dy="-3" font-size="11" font-weight="700" fill="var(--accent)" font-family="Space Grotesk, sans-serif">MASTER</text>
+            <text text-anchor="middle" dy="12" font-size="9" fill="var(--text-muted)" font-family="JetBrains Mono, monospace">Q:${stats.queue_depth || 0} F:${stats.in_flight || 0}</text>
+        `;
+        svg.appendChild(mg);
+
+        if (!workers || workers.length === 0) {
+            const t = document.createElementNS(ns, 'text');
+            t.setAttribute('x', W / 2); t.setAttribute('y', 190);
+            t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', 'var(--text-muted)');
+            t.setAttribute('font-size', '13'); t.setAttribute('font-family', 'Space Grotesk, sans-serif');
+            t.textContent = 'No workers connected';
+            svg.appendChild(t);
+            return;
+        }
+
+        const count = workers.length;
+        const maxSpacing = 180;
+        const spacing = Math.min(maxSpacing, (W - 120) / Math.max(count - 1, 1));
+        const totalW = spacing * (count - 1);
+        const startX = (W - totalW) / 2;
+        const workerY = 210, workerR = 26;
+
+        workers.forEach((w, i) => {
+            const x = count === 1 ? W / 2 : startX + i * spacing;
+            const stateKey = w.state.includes('ACTIVE') ? 'active' : w.state.includes('SUSPECT') ? 'suspect' : 'dead';
+            const stateColor = stateKey === 'active' ? 'var(--success)' : stateKey === 'suspect' ? 'var(--warning)' : 'var(--error)';
+            const cb = w.circuit_breaker;
+            const cbState = cb ? cb.state : 'CLOSED';
+            const cbColor = cbState === 'CLOSED' ? 'var(--success)' : cbState === 'OPEN' ? 'var(--error)' : 'var(--warning)';
+
+            // Connection line — solid, thickness indicates activity
+            const isActive = stateKey === 'active' && w.active_tasks > 0 && cbState !== 'OPEN';
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', masterX); line.setAttribute('y1', masterY + masterR);
+            line.setAttribute('x2', x); line.setAttribute('y2', workerY - workerR);
+            line.setAttribute('stroke', isActive ? 'var(--accent)' : stateColor);
+            line.setAttribute('stroke-width', isActive ? Math.min(2 + w.active_tasks, 6) : (stateKey === 'active' ? '2' : '1.5'));
+            if (stateKey === 'dead') line.setAttribute('stroke-dasharray', '5,5');
+            line.setAttribute('opacity', isActive ? '0.85' : (stateKey === 'dead' ? '0.35' : '0.5'));
+            svg.appendChild(line);
+
+            // Circuit breaker badge at midpoint
+            const midX = (masterX + x) / 2;
+            const midY = (masterY + masterR + workerY - workerR) / 2;
+            const cbG = document.createElementNS(ns, 'g');
+            const cbLabel = cbState === 'HALF_OPEN' ? 'H/O' : cbState;
+            cbG.innerHTML = `
+                <rect x="${midX - 18}" y="${midY - 9}" width="36" height="18" rx="4"
+                      fill="${cbColor}" opacity="0.12" stroke="${cbColor}" stroke-width="1"/>
+                <text x="${midX}" y="${midY + 4}" text-anchor="middle" font-size="8"
+                      font-weight="700" fill="${cbColor}" font-family="JetBrains Mono, monospace">${cbLabel}</text>
+            `;
+            svg.appendChild(cbG);
+
+            // Worker node
+            const wg = document.createElementNS(ns, 'g');
+            wg.setAttribute('transform', `translate(${x},${workerY})`);
+            const sid = w.id.length > 16 ? '...' + w.id.slice(-12) : w.id;
+            wg.innerHTML = `
+                <circle r="${workerR}" fill="${stateColor}" opacity="0.1"
+                        stroke="${stateColor}" stroke-width="2"/>
+                <text text-anchor="middle" dy="-2" font-size="14" font-weight="700"
+                      fill="${stateColor}" font-family="JetBrains Mono, monospace">${w.active_tasks}</text>
+                <text text-anchor="middle" dy="10" font-size="7" fill="var(--text-muted)"
+                      font-family="Space Grotesk, sans-serif">tasks</text>
+                <text text-anchor="middle" dy="${workerR + 16}" font-size="9" fill="var(--text-secondary)"
+                      font-family="JetBrains Mono, monospace">${esc(sid)}</text>
+                <text text-anchor="middle" dy="${workerR + 28}" font-size="8" fill="${stateColor}"
+                      font-weight="600" font-family="Space Grotesk, sans-serif">${w.state.replace('WORKER_','')}</text>
+            `;
+            svg.appendChild(wg);
+        });
+    }
+
+    // -- Workers --
+    async function refreshWorkers() {
+        try {
+            const r = await fetch(`${B}/api/v1/workers`);
+            const d = await r.json();
+            lastWorkers = d.workers || [];
+
+            // Render topology
+            renderTopology(lastWorkers, prevStats);
+
+            // Update chaos selects
+            updateChaosSelects(lastWorkers);
+
+            // Render worker cards
+            const list = document.getElementById('worker-list');
+            list.innerHTML = '';
+            lastWorkers.forEach(w => {
+                const cls = w.state.includes('ACTIVE') ? 'active' : w.state.includes('SUSPECT') ? 'suspect' : 'dead';
+                const st = w.state.replace('WORKER_', '');
+                const cb = w.circuit_breaker;
+                const cbLabel = cb ? cb.state : '-';
+                const cbCls = cb ? (cb.state === 'CLOSED' ? 'success' : cb.state === 'OPEN' ? 'error' : 'warning') : 'text-muted';
+                const uptimeMin = w.uptime_seconds ? Math.floor(w.uptime_seconds / 60) : 0;
+
+                const card = document.createElement('div');
+                card.className = `worker-card ${cls}`;
+                card.innerHTML = `
+                    <div class="worker-dot"></div>
+                    <div style="flex:1;min-width:0">
+                        <span class="worker-id">${esc(w.id)}</span>
+                        <div class="worker-meta">
+                            tasks: ${w.active_tasks} | up: ${uptimeMin}m |
+                            CB: <span style="color:var(--${cbCls});font-weight:600">${cbLabel}</span>
+                            ${cb && cb.failure_count > 0 ? `(${cb.failure_count}/${cb.failure_threshold} fails)` : ''}
+                        </div>
+                    </div>
+                    <span class="worker-state ${cls}">${st}</span>`;
+                list.appendChild(card);
+            });
+            if (!lastWorkers.length) list.innerHTML = '<div class="empty">No workers connected</div>';
+        } catch(e) {}
+    }
+
+    // -- Chaos Selects --
+    function updateChaosSelects(workers) {
+        ['chaos-worker-select', 'chaos-cb-select'].forEach(id => {
+            const sel = document.getElementById(id);
+            const current = sel.value;
+            sel.innerHTML = '<option value="">Select worker...</option>';
+            (workers || []).forEach(w => {
+                const isDead = w.state.includes('DEAD');
+                if (id === 'chaos-worker-select' && isDead) return;
+                const opt = document.createElement('option');
+                opt.value = w.id;
+                const cb = w.circuit_breaker;
+                opt.textContent = w.id + (cb ? ` [CB:${cb.state}]` : '');
+                sel.appendChild(opt);
+            });
+            if (current) sel.value = current;
+        });
+    }
+
+    // -- Chaos Actions --
+    async function chaosKillWorker() {
+        const wid = document.getElementById('chaos-worker-select').value;
+        const res = document.getElementById('chaos-result');
+        if (!wid) { res.textContent = 'Select a worker first'; res.style.color = 'var(--warning)'; return; }
+        try {
+            const r = await fetch(`${B}/api/v1/chaos/kill-worker/${encodeURIComponent(wid)}`, { method: 'POST' });
+            const d = await r.json();
+            if (r.ok) { res.style.color = 'var(--error)'; res.textContent = `Killed: ${d.killed} - tasks will requeue`; }
+            else { res.style.color = 'var(--warning)'; res.textContent = `Error: ${d.error}`; }
+            refreshAll();
+        } catch(e) { res.style.color = 'var(--error)'; res.textContent = `Error: ${e.message}`; }
+    }
+
+    async function chaosTripCB() {
+        const wid = document.getElementById('chaos-cb-select').value;
+        const res = document.getElementById('chaos-result');
+        if (!wid) { res.textContent = 'Select a worker first'; res.style.color = 'var(--warning)'; return; }
+        try {
+            const r = await fetch(`${B}/api/v1/chaos/trip-cb/${encodeURIComponent(wid)}`, { method: 'POST' });
+            const d = await r.json();
+            res.style.color = 'var(--warning)'; res.textContent = `CB tripped: ${wid} -> ${d.state}`;
+            refreshAll();
+        } catch(e) { res.style.color = 'var(--error)'; res.textContent = `Error: ${e.message}`; }
+    }
+
+    async function chaosResetCB() {
+        const wid = document.getElementById('chaos-cb-select').value;
+        const res = document.getElementById('chaos-result');
+        if (!wid) { res.textContent = 'Select a worker first'; res.style.color = 'var(--warning)'; return; }
+        try {
+            const r = await fetch(`${B}/api/v1/chaos/reset-cb/${encodeURIComponent(wid)}`, { method: 'POST' });
+            const d = await r.json();
+            res.style.color = 'var(--success)'; res.textContent = `CB reset: ${wid} -> ${d.state}`;
+            refreshAll();
+        } catch(e) { res.style.color = 'var(--error)'; res.textContent = `Error: ${e.message}`; }
+    }
+
+    async function chaosInjectFails() {
+        const count = parseInt(document.getElementById('chaos-fail-count').value) || 5;
+        const lang = document.getElementById('chaos-fail-lang').value;
+        const res = document.getElementById('chaos-result');
+        try {
+            const r = await fetch(`${B}/api/v1/chaos/fail-tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ count, language: lang })
+            });
+            const d = await r.json();
+            res.style.color = 'var(--error)'; res.textContent = `Injected ${d.submitted} failing tasks - watch retry flow`;
+            refreshAll();
+        } catch(e) { res.style.color = 'var(--error)'; res.textContent = `Error: ${e.message}`; }
+    }
+
+    // -- Stress Test --
+    async function startStressTest() {
+        const btn = document.getElementById('lt-start');
+        btn.disabled = true; btn.textContent = 'Generating...';
+        document.getElementById('lt-status').textContent = 'Submitting...';
+        document.getElementById('lt-status').style.color = 'var(--warning)';
+
+        const count = parseInt(document.getElementById('lt-count').value) || 100;
+        const sleepMs = parseInt(document.getElementById('lt-sleep').value) || 100;
+        const language = document.getElementById('lt-lang').value;
+        const priority = parseInt(document.getElementById('lt-priority').value);
+
+        try {
+            const r = await fetch(`${B}/api/v1/batch-submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ count, language, sleep_ms: sleepMs, priority })
+            });
+            const d = await r.json();
+            document.getElementById('lt-sent').textContent = d.count;
+            document.getElementById('lt-gentime').textContent = `${d.elapsed_ms}ms`;
+            const rate = d.elapsed_ms > 0 ? Math.round(d.count / (d.elapsed_ms / 1000)) : d.count;
+            document.getElementById('lt-rate').textContent = `${rate}/s`;
+            document.getElementById('lt-status').textContent = 'Submitted';
+            document.getElementById('lt-status').style.color = 'var(--success)';
+            refreshAll();
+        } catch(e) {
+            document.getElementById('lt-status').textContent = 'Error';
+            document.getElementById('lt-status').style.color = 'var(--error)';
+        }
+
+        btn.disabled = false; btn.textContent = 'Generate Batch';
+    }
+
+    // -- Task Output Panel --
+    function showTaskOutput(task) {
+        if (!task) return;
+        lastOutputTaskId = task.id;
+
+        document.getElementById('output-task-id').textContent = task.id;
+        const stateEl = document.getElementById('output-state');
+        stateEl.textContent = task.state;
+        stateEl.className = `tag ${task.state.toLowerCase()}`;
+        stateEl.style.display = 'inline-block';
+        document.getElementById('output-worker').textContent = `Worker: ${task.worker_id || '-'}`;
+        document.getElementById('output-duration').textContent = task.duration_ms > 0 ? `Duration: ${formatDuration(task.duration_ms)}` : '';
+        document.getElementById('output-exitcode').textContent = `Exit: ${task.exit_code}`;
+
+        const content = document.getElementById('output-content');
+        content.textContent = task.output || task.error || '(no output)';
+        content.style.color = '';
+        content.className = 'task-output-box' + (task.state === 'FAILED' ? ' error-text' : '');
+
+        // no animation — just update content
+    }
+
+    function updateLatestOutput(tasks) {
+        const terminal = tasks
+            .filter(t => t.state === 'COMPLETED' || t.state === 'FAILED')
+            .sort((a, b) => (b.completed_at || b.created_at || '').localeCompare(a.completed_at || a.created_at || ''));
+        if (terminal.length === 0) return;
+        const latest = terminal[0];
+        if (latest.id === lastOutputTaskId) return;
+        if (!latest.output && !latest.error) return;
+        showTaskOutput(latest);
+    }
+
+    function clearOutput() {
+        lastOutputTaskId = null;
+        document.getElementById('output-task-id').textContent = '';
+        document.getElementById('output-state').style.display = 'none';
+        document.getElementById('output-worker').textContent = '';
+        document.getElementById('output-duration').textContent = '';
+        document.getElementById('output-exitcode').textContent = '';
+        const content = document.getElementById('output-content');
+        content.textContent = 'Submit a task above to see its output here. Tasks will auto-display when completed.';
+        content.style.color = 'var(--text-muted)';
+        content.className = 'task-output-box';
+    }
+
+    // -- State Machine SVG --
+    function renderStateMachine(currentState) {
+        const states = [
+            { id: 'QUEUED',    x: 0,   y: 16, color: 'var(--info)' },
+            { id: 'ASSIGNED',  x: 100, y: 16, color: 'var(--accent)' },
+            { id: 'RUNNING',   x: 200, y: 16, color: 'var(--warning)' },
+            { id: 'COMPLETED', x: 320, y: 0,  color: 'var(--success)' },
+            { id: 'FAILED',    x: 320, y: 36, color: 'var(--error)' },
+            { id: 'RETRYING',  x: 200, y: 56, color: 'var(--purple)' },
+            { id: 'DEAD',      x: 320, y: 56, color: 'var(--error)' },
+        ];
+        const arrows = [
+            ['QUEUED','ASSIGNED'], ['ASSIGNED','RUNNING'],
+            ['RUNNING','COMPLETED'], ['RUNNING','FAILED'],
+            ['FAILED','RETRYING'], ['FAILED','DEAD'],
+            ['RETRYING','QUEUED'], ['DEAD','QUEUED'],
+            ['ASSIGNED','QUEUED'],
+        ];
+
+        let svg = '<svg viewBox="-5 -5 430 80" style="width:100%;max-width:430px;height:75px;margin:8px 0">';
+
+        // Arrows
+        arrows.forEach(([from, to]) => {
+            const f = states.find(s => s.id === from);
+            const t = states.find(s => s.id === to);
+            const fx = f.x + 40, fy = f.y + 9;
+            const tx = t.x, ty = t.y + 9;
+            // Curved path for backward arrows
+            if (tx < fx) {
+                const my = Math.max(fy, ty) + 18;
+                svg += `<path d="M${fx},${fy} Q${(fx+tx)/2},${my} ${tx+40},${ty}" fill="none" stroke="var(--border-strong)" stroke-width="1" opacity="0.5" marker-end="url(#arrowhead)"/>`;
+            } else {
+                svg += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="var(--border-strong)" stroke-width="1" opacity="0.5" marker-end="url(#arrowhead)"/>`;
+            }
+        });
+
+        // Arrowhead marker
+        svg += '<defs><marker id="arrowhead" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0, 6 2, 0 4" fill="var(--border-strong)" opacity="0.6"/></marker></defs>';
+
+        // State nodes
+        states.forEach(s => {
+            const isActive = s.id === currentState;
+            const color = isActive ? s.color : 'var(--text-muted)';
+            const bgOp = isActive ? '0.15' : '0.04';
+            const sw = isActive ? 2 : 1;
+            const fw = isActive ? 700 : 400;
+            svg += `<rect x="${s.x}" y="${s.y}" width="80" height="18" rx="4" fill="${color}" opacity="${bgOp}" stroke="${color}" stroke-width="${sw}"/>`;
+            svg += `<text x="${s.x+40}" y="${s.y+12}" text-anchor="middle" font-size="7.5" font-weight="${fw}" fill="${color}" font-family="JetBrains Mono, monospace">${s.id}</text>`;
+        });
+
+        svg += '</svg>';
+        return svg;
+    }
+
+    // -- Tasks --
+    async function refreshTasks() {
+        try {
+            const r = await fetch(`${B}/api/v1/tasks`);
+            const d = await r.json();
+            lastTasks = d.tasks || [];
+
+            // Show truncation notice when the server capped the queued set.
+            // The API returns at most 200 queued tasks; Stats has the real total.
+            const totalQueued = prevStats.queue_depth || 0;
+            const shownQueued = lastTasks.filter(t => t.state === 'QUEUED').length;
+            const notice = document.getElementById('task-truncation-notice');
+            if (totalQueued > shownQueued) {
+                notice.style.display = 'block';
+                notice.textContent = `Showing ${shownQueued} of ${totalQueued.toLocaleString()} queued tasks — queue is capped at 200 rows to keep the UI fast. Stats cards show the live total.`;
+            } else {
+                notice.style.display = 'none';
+            }
+
+            document.getElementById('task-count').textContent = `${lastTasks.length} tasks`;
+            renderTasks(lastTasks);
+            updateLatestOutput(lastTasks);
+
+            // Track submitted task
+            if (trackedTaskId) {
+                const tracked = lastTasks.find(t => t.id === trackedTaskId);
+                if (tracked && (tracked.state === 'COMPLETED' || tracked.state === 'FAILED')) {
+                    showTaskOutput(tracked);
+                    document.getElementById('output-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    trackedTaskId = null;
+                }
+            }
+
+            // Computed metrics: avg duration and throughput
+            const completedTasks = lastTasks.filter(t => t.state === 'COMPLETED' && t.duration_ms > 0);
+            if (completedTasks.length > 0) {
+                const avgMs = completedTasks.reduce((sum, t) => sum + t.duration_ms, 0) / completedTasks.length;
+                document.getElementById('s-avg-duration').textContent = formatDuration(Math.round(avgMs));
+            } else {
+                document.getElementById('s-avg-duration').textContent = '-';
+            }
+            const now = Date.now();
+            const recentCompleted = lastTasks.filter(t =>
+                t.state === 'COMPLETED' && t.completed_at &&
+                (now - new Date(t.completed_at).getTime()) < 60000
+            );
+            const throughput = recentCompleted.length > 0 ? (recentCompleted.length / 60).toFixed(1) : '0';
+            document.getElementById('s-throughput').textContent = throughput + '/s';
+
+        } catch(e) {}
+    }
+
+    function setTaskFilter(f) {
+        taskFilter = f;
+        document.querySelectorAll('.task-filter').forEach(el => {
+            el.classList.toggle('active', el.dataset.filter === f);
+        });
+        renderTasks(lastTasks);
+    }
+
+    const TASK_RENDER_CAP = 100; // max rows to render in the table
+
+    function renderTasks(tasks) {
+        // Update filter badges
+        const counts = {};
+        for (let i = 0; i < tasks.length; i++) { const s = tasks[i].state; counts[s] = (counts[s] || 0) + 1; }
+        document.querySelectorAll('.task-filter').forEach(el => {
+            const f = el.dataset.filter;
+            if (f === 'all') {
+                el.textContent = `All (${tasks.length})`;
+            } else {
+                const labels = { QUEUED:'Queued', ASSIGNED:'Assigned', RUNNING:'Running', COMPLETED:'Done', FAILED:'Failed', RETRYING:'Retrying', DEAD:'Dead' };
+                const c = counts[f] || 0;
+                el.textContent = c > 0 ? `${labels[f] || f} (${c})` : (labels[f] || f);
+            }
+        });
+
+        let filtered = tasks;
+        if (taskFilter !== 'all') {
+            filtered = tasks.filter(t => t.state === taskFilter);
+        }
+
+        const tb = document.getElementById('task-tb');
+        if (!filtered.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No tasks</td></tr>'; return; }
+
+        // Build HTML as string in one pass — much faster than per-row DOM ops
+        const capped = filtered.length > TASK_RENDER_CAP;
+        const renderList = capped ? filtered.slice(0, TASK_RENDER_CAP) : filtered;
+        let html = '';
+        for (let i = 0; i < renderList.length; i++) {
+            const t = renderList[i];
+            const sc = t.state.toLowerCase();
+            const isExpanded = expandedTaskId === t.id;
+            const outputPreview = t.output ? t.output.substring(0, 60).replace(/\n/g, ' ') : (t.error ? t.error.substring(0, 60) : '-');
+            const durText = t.duration_ms > 0 ? formatDuration(t.duration_ms) : '-';
+            html += `<tr class="task-row" data-tid="${esc(t.id)}">
+                <td><span class="expand-icon${isExpanded ? ' open' : ''}">&#9654;</span></td>
+                <td class="task-id" title="${esc(t.id)}">${esc(t.id)}</td>
+                <td><span class="tag ${sc}">${t.state}</span></td>
+                <td style="font-size:12px">${esc(t.type || 'SCRIPT_PATH')}</td>
+                <td style="font-size:12px;font-family:'JetBrains Mono',monospace">${esc(t.worker_id || '-')}</td>
+                <td style="font-size:12px;font-family:'JetBrains Mono',monospace">${durText}</td>
+                <td class="task-output-preview" title="${esc(outputPreview)}">${esc(outputPreview)}</td>
+                <td>${t.attempt}</td></tr>`;
+            if (isExpanded) {
+                html += `<tr><td colspan="8" style="padding:0"><div class="task-detail open">`;
+                html += '<div class="task-detail-label">State Machine</div>';
+                html += renderStateMachine(t.state);
+                html += '<div class="task-detail-grid">';
+                html += `<div><div class="task-detail-label">Task ID</div><div class="task-detail-value">${esc(t.id)}</div></div>`;
+                html += `<div><div class="task-detail-label">State</div><div class="task-detail-value"><span class="tag ${sc}">${t.state}</span></div></div>`;
+                html += `<div><div class="task-detail-label">Worker</div><div class="task-detail-value">${esc(t.worker_id || 'unassigned')}</div></div>`;
+                html += `<div><div class="task-detail-label">Attempt</div><div class="task-detail-value">${t.attempt} / 3</div></div>`;
+                html += `<div><div class="task-detail-label">Type</div><div class="task-detail-value">${esc(t.type || 'SCRIPT_PATH')}</div></div>`;
+                html += `<div><div class="task-detail-label">Language</div><div class="task-detail-value">${esc(t.language || 'bash')}</div></div>`;
+                if (t.created_at) html += `<div><div class="task-detail-label">Created</div><div class="task-detail-value">${new Date(t.created_at).toLocaleString()}</div></div>`;
+                if (t.assigned_at) html += `<div><div class="task-detail-label">Assigned</div><div class="task-detail-value">${new Date(t.assigned_at).toLocaleString()}</div></div>`;
+                if (t.started_at) html += `<div><div class="task-detail-label">Started</div><div class="task-detail-value">${new Date(t.started_at).toLocaleString()}</div></div>`;
+                if (t.completed_at) html += `<div><div class="task-detail-label">Completed</div><div class="task-detail-value">${new Date(t.completed_at).toLocaleString()}</div></div>`;
+                if (t.duration_ms > 0) html += `<div><div class="task-detail-label">Duration</div><div class="task-detail-value">${formatDuration(t.duration_ms)}</div></div>`;
+                html += `<div><div class="task-detail-label">Exit Code</div><div class="task-detail-value">${t.exit_code}</div></div>`;
+                html += '</div>';
+                if (t.output) html += `<div class="task-detail-label" style="margin-top:12px">Output</div><div class="task-output-box">${esc(t.output)}</div>`;
+                if (t.error) html += `<div class="task-detail-label" style="margin-top:12px">Error</div><div class="task-output-box error-text">${esc(t.error)}</div>`;
+                if (!t.output && !t.error) html += '<div style="color:var(--text-muted);font-size:12px;margin-top:8px">No output yet (task may still be running)</div>';
+                html += '</div></td></tr>';
+            }
+        }
+        if (capped) {
+            html += `<tr><td colspan="8" class="empty" style="color:var(--warning)">Showing ${TASK_RENDER_CAP} of ${filtered.length} — use filters to narrow</td></tr>`;
+        }
+        tb.innerHTML = html;
+
+        // Attach click handlers via delegation
+        tb.onclick = (e) => {
+            const row = e.target.closest('tr.task-row');
+            if (!row) return;
+            const tid = row.dataset.tid;
+            expandedTaskId = expandedTaskId === tid ? null : tid;
+            renderTasks(lastTasks);
+        };
+    }
+
+    // -- DLQ --
+    async function refreshDLQ() {
+        try {
+            const r = await fetch(`${B}/api/v1/dead-letter`);
+            const d = await r.json();
+            const items = d.dead_letter || [];
+            const tb = document.getElementById('dlq-tb');
+            if (!items.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Queue empty</td></tr>'; return; }
+            let html = '';
+            for (let i = 0; i < items.length; i++) {
+                const t = items[i];
+                const truncError = (t.error || '').substring(0, 80);
+                html += `<tr>
+                    <td class="task-id" title="${esc(t.id)}">${esc(t.id)}</td>
+                    <td style="font-size:12px">${esc(t.type || 'SCRIPT_PATH')}</td>
+                    <td style="font-size:12px">${esc(t.language || 'bash')}</td>
+                    <td style="color:var(--error);font-size:12px" title="${esc(t.error||'')}">${esc(truncError)}</td>
+                    <td>${t.attempts}</td>
+                    <td style="font-size:12px">${t.exit_code || 0}</td>
+                    <td><button class="btn btn-sm" onclick="retryDLQ('${esc(t.id)}')">Retry</button></td>
+                </tr>`;
+            }
+            tb.innerHTML = html;
+        } catch(e) {}
+    }
+    async function retryDLQ(id) { await fetch(`${B}/api/v1/dead-letter/${id}/retry`, {method:'POST'}); refreshAll(); }
+    async function retryAllDLQ() {
+        try {
+            const r = await fetch(`${B}/api/v1/dead-letter`);
+            const d = await r.json();
+            for (const t of (d.dead_letter || [])) {
+                await fetch(`${B}/api/v1/dead-letter/${t.id}/retry`, { method: 'POST' });
+            }
+            refreshAll();
+        } catch(e) {}
+    }
+
+    // -- Submit --
+    async function submitTask() {
+        const lang = document.getElementById('lang').value;
+        const script = document.getElementById('script-input').value;
+        const res = document.getElementById('submit-result');
+        if (!script.trim()) { res.textContent = 'Error: empty script'; res.style.color = 'var(--error)'; return; }
+        try {
+            const r = await fetch(`${B}/api/v1/submit`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({language:lang, script:script}) });
+            const d = await r.json();
+            res.style.color = 'var(--success)'; res.textContent = `Submitted: ${d.task_id} - watching for output...`;
+            trackedTaskId = d.task_id;
+            refreshAll();
+        } catch(e) { res.style.color = 'var(--error)'; res.textContent = `Error: ${e.message}`; }
+    }
+    function loadExample() {
+        const lang = document.getElementById('lang').value;
+        const ex = {
+            bash: '#!/bin/bash\necho "PID: $$"\necho "Host: $(hostname)"\nfor i in 1 2 3; do echo "Step $i"; sleep 1; done\necho "Done!"',
+            python: 'import os, platform, time\nprint(f"Python on {platform.node()}, PID {os.getpid()}")\nfor i in range(1, 4):\n    time.sleep(1)\n    print(f"Processing batch {i}...")\nprint("Complete!")',
+            node: 'const os = require("os");\nconsole.log(`Node ${process.version} on ${os.hostname()}`);\nlet c=0;\nconst iv = setInterval(() => { c++; console.log(`Tick ${c}`); if(c>=3){clearInterval(iv);console.log("Done!")} }, 1000);'
+        };
+        document.getElementById('script-input').value = ex[lang] || ex.bash;
+    }
+
+    // -- Markdown Renderer --
+    function renderMarkdown(md) {
+        let html = '';
+        const lines = md.split('\n');
+        let inCodeBlock = false, codeContent = '';
+        let inList = false, listType = '';
+        let inTable = false, tableRows = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Fenced code blocks
+            if (line.trimStart().startsWith('```')) {
+                if (inCodeBlock) {
+                    html += `<code class="md-code">${esc(codeContent.trimEnd())}</code>`;
+                    codeContent = ''; inCodeBlock = false;
+                } else {
+                    if (inList) { html += listType === 'ul' ? '</ul>' : '</ol>'; inList = false; }
+                    if (inTable) { html += renderMdTable(tableRows); inTable = false; tableRows = []; }
+                    inCodeBlock = true;
+                }
+                continue;
+            }
+            if (inCodeBlock) { codeContent += line + '\n'; continue; }
+
+            // Table detection
+            if (line.includes('|') && line.trim().startsWith('|')) {
+                if (inList) { html += listType === 'ul' ? '</ul>' : '</ol>'; inList = false; }
+                // Check if separator row
+                if (/^\|[\s\-:|]+\|$/.test(line.trim())) { continue; }
+                if (!inTable) { inTable = true; tableRows = []; }
+                tableRows.push(line);
+                continue;
+            } else if (inTable) {
+                html += renderMdTable(tableRows);
+                inTable = false; tableRows = [];
+            }
+
+            // Headings
+            const hMatch = line.match(/^(#{1,4})\s+(.+)/);
+            if (hMatch) {
+                if (inList) { html += listType === 'ul' ? '</ul>' : '</ol>'; inList = false; }
+                const level = hMatch[1].length;
+                html += `<h${level} class="md-h${level}">${inlineFmt(hMatch[2])}</h${level}>`;
+                continue;
+            }
+
+            // Horizontal rule
+            if (/^---+$/.test(line.trim())) {
+                if (inList) { html += listType === 'ul' ? '</ul>' : '</ol>'; inList = false; }
+                html += '<hr class="md-hr">';
+                continue;
+            }
+
+            // Unordered list
+            const ulMatch = line.match(/^[\s]*[-*]\s+(.+)/);
+            if (ulMatch) {
+                if (!inList || listType !== 'ul') {
+                    if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
+                    html += '<ul class="md-list">'; inList = true; listType = 'ul';
+                }
+                html += `<li>${inlineFmt(ulMatch[1])}</li>`;
+                continue;
+            }
+
+            // Ordered list
+            const olMatch = line.match(/^\s*\d+\.\s+(.+)/);
+            if (olMatch) {
+                if (!inList || listType !== 'ol') {
+                    if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
+                    html += '<ol class="md-list">'; inList = true; listType = 'ol';
+                }
+                html += `<li>${inlineFmt(olMatch[1])}</li>`;
+                continue;
+            }
+
+            // Close list on blank line
+            if (inList && line.trim() === '') {
+                html += listType === 'ul' ? '</ul>' : '</ol>';
+                inList = false;
+                continue;
+            }
+
+            // Blank line
+            if (line.trim() === '') continue;
+
+            // Paragraph
+            html += `<p class="md-p">${inlineFmt(line)}</p>`;
+        }
+
+        if (inList) html += listType === 'ul' ? '</ul>' : '</ol>';
+        if (inTable) html += renderMdTable(tableRows);
+        return html;
+    }
+
+    function inlineFmt(text) {
+        return text
+            .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="md-link">$1</a>');
+    }
+
+    function renderMdTable(rows) {
+        if (rows.length === 0) return '';
+        let html = '<table class="md-table">';
+        rows.forEach((row, idx) => {
+            const cells = row.split('|').filter(c => c.trim() !== '');
+            const tag = idx === 0 ? 'th' : 'td';
+            html += '<tr>';
+            cells.forEach(c => { html += `<${tag}>${inlineFmt(c.trim())}</${tag}>`; });
+            html += '</tr>';
+        });
+        html += '</table>';
+        return html;
+    }
+
+    // -- Docs --
+    function openDocs() { document.getElementById('docs-modal').classList.add('open'); loadDocList(); }
+    function closeDocs() { document.getElementById('docs-modal').classList.remove('open'); }
+    async function loadDocList() {
+        document.getElementById('docs-title').textContent = 'Documentation';
+        try {
+            const r = await fetch(`${B}/api/v1/docs`);
+            const d = await r.json();
+            const list = document.getElementById('doc-list');
+            list.style.display = 'flex'; list.innerHTML = '';
+            const body = document.getElementById('docs-body');
+            const ex = body.querySelector('.doc-content'); if (ex) ex.remove();
+            const exb = body.querySelector('.doc-back'); if (exb) exb.remove();
+            (d.docs || []).forEach(doc => {
+                const item = document.createElement('div');
+                item.className = 'doc-item';
+                item.onclick = () => loadDoc(doc.name, doc.title);
+                item.innerHTML = `<div class="doc-item-title">${esc(doc.title)}</div><div class="doc-item-desc">${esc(doc.description)}</div>`;
+                list.appendChild(item);
+            });
+        } catch(e) { document.getElementById('doc-list').innerHTML = '<div class="empty">Failed to load docs</div>'; }
+    }
+    async function loadDoc(name, title) {
+        document.getElementById('docs-title').textContent = title;
+        document.getElementById('doc-list').style.display = 'none';
+        const body = document.getElementById('docs-body');
+        let backBtn = body.querySelector('.doc-back');
+        if (!backBtn) { backBtn = document.createElement('button'); backBtn.className = 'btn doc-back'; backBtn.textContent = 'Back'; backBtn.onclick = loadDocList; body.prepend(backBtn); }
+        let cd = body.querySelector('.doc-content');
+        if (!cd) { cd = document.createElement('div'); cd.className = 'doc-content'; body.appendChild(cd); }
+        try { const r = await fetch(`${B}/api/v1/docs/${name}`); cd.innerHTML = renderMarkdown(await r.text()); } catch(e) { cd.innerHTML = '<p class="md-p">Failed to load.</p>'; }
+    }
+    document.getElementById('docs-modal').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDocs(); });
+
+    // -- Init: fixed 5s poll, WS is passive (event counter + log buffer only) --
+    connectWS();
+    refreshAll();
+    setInterval(refreshAll, POLL_INTERVAL);
+    </script>
+</body>
+</html>

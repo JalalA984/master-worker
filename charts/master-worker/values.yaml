@@ -2,4 +2,62 @@ image:
   repository: master-worker
   tag: v1
 
-workerCount: 3 
+workerCount: 3
+
+master:
+  grpcPort: 50051
+  httpPort: 9092
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    TASK_QUEUE_SIZE: "100"
+    HEARTBEAT_INTERVAL: 10s
+    HEARTBEAT_TIMEOUT: 30s
+    WORKER_DEAD_TIMEOUT: 60s
+
+worker:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  env:
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    HEARTBEAT_INTERVAL: 10s
+
+ingress:
+  enabled: false
+
+monitoring:
+  enabled: true
+  prometheusOperator:
+    enabled: false  # Set to true only if using Prometheus Operator
+  prometheus:
+    scrapeInterval: 15s
+    retention: 24h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  grafana:
+    adminPassword: admin
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi

@@ -4,27 +4,162 @@ package api;
 
 option go_package = "github.com/jalala984/master-worker/api";
 
-message Request {
-    string action = 1;
-    string task_id = 2;   // Worker can report status on a specific task
-    string payload = 3;   // Worker can send logs/results back
-    string worker_id = 4;
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Task & Worker State Enums
+// ============================================================================
+
+// TaskState represents the lifecycle of a task.
+// Modeled after Google Borg task states (Verma et al., EuroSys 2015):
+//   Borg: PENDING → RUNNING → DEAD
+//   Ours: QUEUED → ASSIGNED → RUNNING → COMPLETED/FAILED → RETRYING/DEAD
+//
+// The RETRYING and DEAD states come from message queue patterns (Amazon SQS,
+// IBM MQ) where failed messages are retried with backoff, then moved to a
+// dead letter queue after exhausting retries.
+enum TaskState {
+  TASK_UNKNOWN   = 0;  // Zero value, should never be used intentionally
+  TASK_QUEUED    = 1;  // Waiting in queue for assignment
+  TASK_ASSIGNED  = 2;  // Assigned to a worker, not yet executing
+  TASK_RUNNING   = 3;  // Worker is actively executing the script
+  TASK_COMPLETED = 4;  // Finished successfully (exit code 0)
+  TASK_FAILED    = 5;  // Execution failed (non-zero exit or error)
+  TASK_RETRYING  = 6;  // Awaiting retry after failure (Sprint 3)
+  TASK_DEAD      = 7;  // Exhausted retries, in dead letter queue (Sprint 3)
 }
 
-message Response {
-    string data = 1;
-    string task_id = 2;   // Master tells worker "This is Task #X"
+// WorkerState represents the lifecycle of a worker node.
+// Modeled after HDFS DataNode states: the NameNode tracks DataNodes as
+// live/dead based on heartbeat freshness.
+//
+// State transitions:
+//   ACTIVE → SUSPECT (missed heartbeat timeout)
+//   SUSPECT → ACTIVE (heartbeat received)
+//   SUSPECT → DEAD (exceeded dead timeout)
+//   ACTIVE → DRAINING (graceful shutdown initiated)
+//
+// Reference: "The Hadoop Distributed File System" (Shvachko et al., MSST 2010)
+enum WorkerState {
+  WORKER_UNKNOWN  = 0;
+  WORKER_ACTIVE   = 1;  // Healthy, receiving and executing tasks
+  WORKER_SUSPECT  = 2;  // Missed heartbeats, may be failing
+  WORKER_DEAD     = 3;  // Confirmed unreachable, tasks will be reassigned
+  WORKER_DRAINING = 4;  // Graceful shutdown in progress, no new tasks
 }
 
-// NodeService defines two RPC methods for node operations.
-// The first is a unary RPC for reporting status, it takes in a Request and returns a Response.
-// Example usage could be a node reporting its current health status.
-// For example the master could call ReportStatus with action "get_status" and the node would respond with its current status in the data field.
-// The second is a server streaming RPC for assigning tasks, it takes in a Request and returns a stream of Responses.
-// Example usage could be the master assigning a long-running task to the node, and the node sending back periodic updates.
-// For example the master could call AssignTask with action "start_task" and the worker would respond with multiple Responses containing progress updates in the data field.
+// TaskType defines how the task content is delivered to the worker.
+// This enables heterogeneous workload support — like Google Borg handling
+// both long-running services and batch jobs with different execution models.
+//
+// SCRIPT_PATH: Legacy mode — worker reads script from filesystem path
+// INLINE:      Content-addressable — script body embedded in the message
+// ARCHIVE:     CI/CD mode — tar.gz project archive with entrypoint command
+enum TaskType {
+  SCRIPT_PATH = 0;  // Default: execute a script at a filesystem path
+  INLINE      = 1;  // Execute inline script content (any language)
+  ARCHIVE     = 2;  // Extract tar.gz archive, run entrypoint command
+}
 
+// ============================================================================
+// Messages
+// ============================================================================
+
+// WorkerRegistration is sent by a worker when it first connects to the master.
+// Pattern from HDFS: DataNodes send a registration block to the NameNode
+// containing storage capacity, software version, and unique ID.
+//
+// In our system, the worker sends this as the initial request when opening
+// the AssignTask stream, which serves as both registration and stream initiation.
+message WorkerRegistration {
+  string worker_id = 1;                      // Unique worker identifier (hostname-pid)
+  string hostname  = 2;                      // Machine hostname (pod name in K8s)
+  google.protobuf.Timestamp start_time = 3;  // When the worker process started
+}
+
+// Heartbeat is sent periodically by workers to prove liveness.
+// The master uses heartbeat freshness to detect failed workers.
+//
+// Protocol modeled after HDFS heartbeat:
+//   - Default interval: 3s (we use 10s for visibility in demos)
+//   - Suspect threshold: no heartbeat for 30s
+//   - Dead threshold: no heartbeat for 60s
+//
+// Reference: "The Hadoop Distributed File System" (Shvachko et al., MSST 2010)
+message Heartbeat {
+  string worker_id   = 1;                    // Which worker is heartbeating
+  int32 active_tasks = 2;                    // Current number of tasks being executed
+  google.protobuf.Timestamp timestamp = 3;   // When the heartbeat was generated
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+// TaskAssignment is sent from master to worker via the server-streaming RPC.
+// Contains everything a worker needs to execute a task.
+//
+// Enhanced to support 3 execution modes:
+//   1. SCRIPT_PATH: `script` field contains filesystem path (original mode)
+//   2. INLINE: `content` field contains script body, `language` selects interpreter
+//   3. ARCHIVE: `content` field contains base64-encoded tar.gz, `entrypoint` is the command
+message TaskAssignment {
+  string task_id          = 1;               // Unique task identifier
+  string script           = 2;               // Path to the bash script (SCRIPT_PATH mode)
+  google.protobuf.Timestamp assigned_at = 3; // When the task was dispatched
+  int32 attempt           = 4;               // Which retry attempt (1 = first try)
+  int64 timeout_seconds   = 5;               // Max execution time before timeout
+
+  // Enhanced task fields (Step 5 - heterogeneous task support)
+  TaskType task_type      = 6;               // Execution mode
+  string content          = 7;               // Inline script body or base64 archive
+  string language         = 8;               // Language: bash, python, node (for INLINE)
+  string entrypoint       = 9;               // Command to run after archive extraction
+}
+
+// TaskReport is sent from worker to master when a task reaches a terminal state.
+// Includes timing information for latency tracking and SLO monitoring.
+message TaskReport {
+  string task_id        = 1;                 // Which task this report is for
+  string worker_id      = 2;                 // Which worker executed it
+  TaskState state       = 3;                 // Terminal state (COMPLETED or FAILED)
+  string output         = 4;                 // Combined stdout+stderr from the script
+  string error_message  = 5;                 // Error details if state is FAILED
+  google.protobuf.Timestamp started_at   = 6;  // When execution began
+  google.protobuf.Timestamp completed_at = 7;  // When execution finished
+  int32 exit_code       = 8;                 // Process exit code (0 = success)
+}
+
+message TaskReportResponse {
+  bool acknowledged = 1;
+}
+
+// ============================================================================
+// Service Definition
+// ============================================================================
+
+// NodeService defines the gRPC API between master and workers.
+//
+// RPC patterns used:
+//   - Unary (request-response): ReportTaskStatus, SendHeartbeat
+//   - Server-streaming (one request, many responses): AssignTask
+//
+// The server-streaming pattern for task assignment means workers don't need
+// to poll for work — the master pushes tasks as they become available.
+// This is more efficient than polling and provides natural backpressure.
 service NodeService {
-    rpc ReportStatus(Request) returns (Response){};
-    rpc AssignTask(Request) returns (stream Response){}; // Server-side RPC
+  // ReportTaskStatus: Worker reports task completion or failure to master.
+  // Unary RPC — one request, one response. Called once per task execution.
+  rpc ReportTaskStatus(TaskReport) returns (TaskReportResponse) {};
+
+  // AssignTask: Master streams task assignments to a connected worker.
+  // Server-streaming RPC — worker opens the stream with its registration,
+  // master pushes TaskAssignment messages as tasks become available.
+  // The stream stays open for the worker's entire lifetime.
+  rpc AssignTask(WorkerRegistration) returns (stream TaskAssignment) {};
+
+  // SendHeartbeat: Worker periodically proves it is alive.
+  // Unary RPC — lightweight, frequent calls (default every 10s).
+  // Master uses heartbeat absence to detect worker failures.
+  rpc SendHeartbeat(Heartbeat) returns (HeartbeatResponse) {};
 }

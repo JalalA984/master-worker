@@ -2,23 +2,71 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: master
+  labels:
+    app: master
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: master  # Deployment looks for Pods with this label
+      app: master
   template:
     metadata:
       labels:
-        app: master # The Pod is given this label
+        app: master
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.master.httpPort }}"
+        prometheus.io/path: "/metrics"
     spec:
+      serviceAccountName: master-sa
       containers:
         - name: master
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           args: ["./main", "master"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.master.grpcPort }}
+            - name: http
+              containerPort: {{ .Values.master.httpPort }}
+          env:
+            - name: GRPC_PORT
+              value: ":{{ .Values.master.grpcPort }}"
+            - name: HTTP_PORT
+              value: ":{{ .Values.master.httpPort }}"
+            - name: LOG_LEVEL
+              value: "{{ .Values.master.env.LOG_LEVEL }}"
+            - name: LOG_FORMAT
+              value: "{{ .Values.master.env.LOG_FORMAT }}"
+            - name: TASK_QUEUE_SIZE
+              value: "{{ .Values.master.env.TASK_QUEUE_SIZE }}"
+            - name: HEARTBEAT_INTERVAL
+              value: "{{ .Values.master.env.HEARTBEAT_INTERVAL }}"
+            - name: HEARTBEAT_TIMEOUT
+              value: "{{ .Values.master.env.HEARTBEAT_TIMEOUT }}"
+            - name: WORKER_DEAD_TIMEOUT
+              value: "{{ .Values.master.env.WORKER_DEAD_TIMEOUT }}"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: {{ .Values.master.resources.requests.cpu }}
+              memory: {{ .Values.master.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.master.resources.limits.cpu }}
+              memory: {{ .Values.master.resources.limits.memory }}
           volumeMounts:
             - name: script-vol
-              mountPath: /etc/scripts # Master will scan this path
+              mountPath: /etc/scripts
       volumes:
         - name: script-vol
           configMap:

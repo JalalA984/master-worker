@@ -1,0 +1,15 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - gofmt
+
+linters-settings:
+  errcheck:
+    check-blank: false
+
+issues:
+  exclude-dirs:
+    - api

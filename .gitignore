@@ -1,1 +1,7 @@
 /api/*.pb.*
+CLAUDE.md
+.claude
+master-worker
+coverage.out
+coverage.html
+*.badger/
